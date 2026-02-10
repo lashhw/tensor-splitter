@@ -1,24 +1,18 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import List, Tuple
-
-
 class TilingError(ValueError):
     pass
 
 
-@dataclass(frozen=True)
 class ConvInputSlice:
-    slice_start: int
-    slice_end: int
-    pad_top: int
-    pad_bottom: int
-    x0: int
-    x1: int
+    def __init__(self, slice_start, slice_end, pad_top, pad_bottom, x0, x1):
+        self.slice_start = slice_start
+        self.slice_end = slice_end
+        self.pad_top = pad_top
+        self.pad_bottom = pad_bottom
+        self.x0 = x0
+        self.x1 = x1
 
 
-def partition_ranges(total: int, splits: int) -> List[Tuple[int, int]]:
+def partition_ranges(total, splits):
     if total is None or total <= 0:
         raise TilingError(f"total must be > 0; got {total}")
     if splits <= 0:
@@ -29,7 +23,7 @@ def partition_ranges(total: int, splits: int) -> List[Tuple[int, int]]:
         )
     base = total // splits
     rem = total % splits
-    ranges: List[Tuple[int, int]] = []
+    ranges = []
     start = 0
     for i in range(splits):
         size = base + (1 if i < rem else 0)
@@ -39,19 +33,19 @@ def partition_ranges(total: int, splits: int) -> List[Tuple[int, int]]:
     return ranges
 
 
-def receptive_field(kernel: int, dilation: int) -> int:
+def receptive_field(kernel, dilation):
     return (kernel - 1) * dilation + 1
 
 
 def conv_input_slice_for_output(
-    y0: int,
-    y1: int,
-    stride: int,
-    dilation: int,
-    kernel: int,
-    pad_top: int,
-    h_in: int,
-) -> ConvInputSlice:
+    y0,
+    y1,
+    stride,
+    dilation,
+    kernel,
+    pad_top,
+    h_in,
+):
     if y1 <= y0:
         raise TilingError(f"invalid output range [{y0},{y1})")
     rf = receptive_field(kernel, dilation)
@@ -72,12 +66,12 @@ def conv_input_slice_for_output(
 
 
 def conv_output_height(
-    h_in: int,
-    kernel: int,
-    stride: int,
-    dilation: int,
-    pad_top: int,
-    pad_bottom: int,
-) -> int:
+    h_in,
+    kernel,
+    stride,
+    dilation,
+    pad_top,
+    pad_bottom,
+):
     rf = receptive_field(kernel, dilation)
     return ((h_in + pad_top + pad_bottom - rf) // stride) + 1

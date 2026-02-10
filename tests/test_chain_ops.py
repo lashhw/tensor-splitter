@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import numpy as np
 import onnx
 from src import gs
@@ -8,7 +6,7 @@ from src.config import GroupConfig
 from src.rewrite import rewrite_model
 
 
-def _make_chain_model() -> onnx.ModelProto:
+def _make_chain_model():
     inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 10, 6])
     weight = gs.Constant("W", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
     bias = gs.Constant("B", values=np.random.randn(4).astype(np.float32))
@@ -32,7 +30,7 @@ def _make_chain_model() -> onnx.ModelProto:
     return onnx.shape_inference.infer_shapes(model)
 
 
-def test_chain_rewrite_matches() -> None:
+def test_chain_rewrite_matches():
     model = _make_chain_model()
     groups = [
         GroupConfig(

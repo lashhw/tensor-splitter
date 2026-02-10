@@ -1,29 +1,24 @@
-from __future__ import annotations
-
 import json
-from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import onnx
 
 from . import gs
-from .config import GroupConfig, config_to_jsonable
-from .graph_utils import GraphError, GroupInfo, analyze_group
-from .tiling import ConvInputSlice, TilingError, conv_input_slice_for_output, conv_output_height, partition_ranges
+from .config import config_to_jsonable
+from .graph_utils import analyze_group
+from .tiling import conv_input_slice_for_output, conv_output_height, partition_ranges
 
 
 class RewriteError(RuntimeError):
     pass
 
 
-@dataclass
 class NameScope:
-    def __init__(self, existing: Iterable[str]):
+    def __init__(self, existing):
         self.existing = set(existing)
         self.counter = 0
 
-    def make(self, base: str) -> str:
+    def make(self, base):
         base = base.replace(":", "_")
         name = f"{base}_{self.counter}"
         self.counter += 1
@@ -34,13 +29,13 @@ class NameScope:
         return name
 
 
-@dataclass
 class TileBlock:
-    orig_index: int
-    tile_id: int
-    nodes: List[gs.Node]
+    def __init__(self, orig_index, tile_id, nodes):
+        self.orig_index = orig_index
+        self.tile_id = tile_id
+        self.nodes = nodes
 
-    def assign_priority(self, priority: Dict[gs.Node, int], order: int) -> None:
+    def assign_priority(self, priority, order):
         for node in self.nodes:
             priority[node] = order
 
@@ -58,13 +53,13 @@ UNARY_CONST_OPS = {
 BINARY_OPS = {"Add", "Mul", "Sub", "Div"}
 
 
-def _get_attr(node: gs.Node, name: str, default=None):
+def _get_attr(node, name, default=None):
     if node.attrs is None:
         return default
     return node.attrs.get(name, default)
 
 
-def _as_int_list(value, length: Optional[int] = None) -> Optional[List[int]]:
+def _as_int_list(value, length=None):
     if value is None:
         return None
     if isinstance(value, np.ndarray):
@@ -78,19 +73,19 @@ def _as_int_list(value, length: Optional[int] = None) -> Optional[List[int]]:
     return out
 
 
-def _require_static_dim(dim, name: str) -> int:
+def _require_static_dim(dim, name):
     if dim is None or isinstance(dim, str):
         raise RewriteError(f"{name} must be static; got {dim}")
     return int(dim)
 
 
-def _tensor_rank(tensor: gs.Tensor) -> int:
+def _tensor_rank(tensor):
     if hasattr(tensor, "shape") and tensor.shape is not None:
         return len(tensor.shape)
     return 0
 
 
-def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
+def _tensor_height(tensor, axis=2):
     if not hasattr(tensor, "shape") or tensor.shape is None:
         raise RewriteError(f"tensor {tensor.name} has no static shape information")
     if len(tensor.shape) <= axis:
@@ -98,7 +93,7 @@ def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
     return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
 
 
-def _clone_shape_with_height(shape: Optional[Sequence], axis: int, height: int) -> Optional[List]:
+def _clone_shape_with_height(shape, axis, height):
     if shape is None:
         return None
     if len(shape) <= axis:
@@ -108,18 +103,18 @@ def _clone_shape_with_height(shape: Optional[Sequence], axis: int, height: int) 
     return new_shape
 
 
-def _make_constant(name_scope: NameScope, values: np.ndarray) -> gs.Constant:
+def _make_constant(name_scope, values):
     return gs.Constant(name_scope.make("tsplit_const"), values)
 
 
 def _make_slice(
-    name_scope: NameScope,
-    data: gs.Tensor,
-    start: int,
-    end: int,
-    axis: int,
-    nodes: List[gs.Node],
-) -> gs.Tensor:
+    name_scope,
+    data,
+    start,
+    end,
+    axis,
+    nodes,
+):
     starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
     ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
@@ -135,12 +130,12 @@ def _make_slice(
 
 
 def _make_concat(
-    name_scope: NameScope,
-    inputs: List[gs.Tensor],
-    axis: int,
-    nodes: List[gs.Node],
-    shape_hint: Optional[Sequence] = None,
-) -> gs.Tensor:
+    name_scope,
+    inputs,
+    axis,
+    nodes,
+    shape_hint=None,
+):
     if not inputs:
         raise RewriteError("concat inputs must be non-empty")
     out_shape = None
@@ -153,17 +148,17 @@ def _make_concat(
 
 
 def _slice_from_tiles(
-    name_scope: NameScope,
-    tiles: List[gs.Tensor],
-    ranges: List[Tuple[int, int]],
-    start: int,
-    end: int,
-    axis: int,
-    nodes: List[gs.Node],
-) -> gs.Tensor:
+    name_scope,
+    tiles,
+    ranges,
+    start,
+    end,
+    axis,
+    nodes,
+):
     if start >= end:
         raise RewriteError(f"invalid slice range [{start},{end})")
-    pieces: List[gs.Tensor] = []
+    pieces = []
     for tile, (s, e) in zip(tiles, ranges):
         overlap_start = max(s, start)
         overlap_end = min(e, end)
@@ -189,12 +184,12 @@ def _slice_from_tiles(
 
 
 def _make_pad(
-    name_scope: NameScope,
-    data: gs.Tensor,
-    pad_top: int,
-    pad_bottom: int,
-    nodes: List[gs.Node],
-) -> gs.Tensor:
+    name_scope,
+    data,
+    pad_top,
+    pad_bottom,
+    nodes,
+):
     rank = _tensor_rank(data)
     if rank != 4:
         raise RewriteError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
@@ -219,7 +214,7 @@ def _make_pad(
     return out
 
 
-def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[int]]:
+def _conv_params(node):
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     if auto_pad not in (None, "NOTSET", ""):
         raise RewriteError(f"Conv auto_pad {auto_pad} not supported in v1")
@@ -244,7 +239,7 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[i
     return kernel_shape, strides, dilations, pads
 
 
-def _conv_attrs_with_height_pad(node: gs.Node, pads: List[int]) -> Dict:
+def _conv_attrs_with_height_pad(node, pads):
     attrs = dict(node.attrs) if node.attrs else {}
     attrs["pads"] = pads
     if "auto_pad" in attrs:
@@ -252,10 +247,10 @@ def _conv_attrs_with_height_pad(node: gs.Node, pads: List[int]) -> Dict:
     return attrs
 
 
-def _toposort_with_priority(nodes: List[gs.Node], priority: Dict[gs.Node, int]) -> List[gs.Node]:
+def _toposort_with_priority(nodes, priority):
     node_set = set(nodes)
-    adj: Dict[gs.Node, List[gs.Node]] = {node: [] for node in nodes}
-    indeg: Dict[gs.Node, int] = {node: 0 for node in nodes}
+    adj = {node: [] for node in nodes}
+    indeg = {node: 0 for node in nodes}
 
     for node in nodes:
         for inp in node.inputs:
@@ -267,12 +262,12 @@ def _toposort_with_priority(nodes: List[gs.Node], priority: Dict[gs.Node, int]) 
     import heapq
 
     order = {node: idx for idx, node in enumerate(nodes)}
-    heap: List[Tuple[int, int, gs.Node]] = []
+    heap = []
     for node, deg in indeg.items():
         if deg == 0:
             heapq.heappush(heap, (priority.get(node, 10**9), order[node], node))
 
-    result: List[gs.Node] = []
+    result = []
     while heap:
         _, _, node = heapq.heappop(heap)
         result.append(node)
@@ -286,7 +281,7 @@ def _toposort_with_priority(nodes: List[gs.Node], priority: Dict[gs.Node, int]) 
     return result
 
 
-def _replace_tensor_consumers(graph: gs.Graph, old: gs.Tensor, new: gs.Tensor) -> None:
+def _replace_tensor_consumers(graph, old, new):
     for consumer in list(old.outputs):
         for idx, inp in enumerate(consumer.inputs):
             if inp is old:
@@ -296,7 +291,7 @@ def _replace_tensor_consumers(graph: gs.Graph, old: gs.Tensor, new: gs.Tensor) -
             graph.outputs[idx] = new
 
 
-def _ensure_supported_op(node: gs.Node) -> None:
+def _ensure_supported_op(node):
     if node.op in UNARY_OPS:
         return
     if node.op in UNARY_CONST_OPS:
@@ -309,14 +304,14 @@ def _ensure_supported_op(node: gs.Node) -> None:
 
 
 def _build_unary_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Tensor],
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Tensor], List[TileBlock]]:
-    out_tiles: List[gs.Tensor] = []
-    blocks: List[TileBlock] = []
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    nodes,
+):
+    out_tiles = []
+    blocks = []
 
     for tile_id, tile in enumerate(tiles):
         out_shape = tile.shape if hasattr(tile, "shape") else None
@@ -334,15 +329,15 @@ def _build_unary_tiles(
 
 
 def _build_unary_const_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Tensor],
-    nodes: List[gs.Node],
-    main_input_index: int,
-) -> Tuple[List[gs.Tensor], List[TileBlock]]:
-    out_tiles: List[gs.Tensor] = []
-    blocks: List[TileBlock] = []
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    nodes,
+    main_input_index,
+):
+    out_tiles = []
+    blocks = []
 
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
@@ -369,15 +364,15 @@ def _build_unary_const_tiles(
 
 
 def _build_binary_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Tensor],
-    nodes: List[gs.Node],
-    main_input_index: int,
-) -> Tuple[List[gs.Tensor], List[TileBlock]]:
-    out_tiles: List[gs.Tensor] = []
-    blocks: List[TileBlock] = []
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    nodes,
+    main_input_index,
+):
+    out_tiles = []
+    blocks = []
 
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
@@ -404,14 +399,14 @@ def _build_binary_tiles(
 
 
 def _build_conv_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Tensor],
-    ranges: List[Tuple[int, int]],
-    splits: int,
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Tensor], List[Tuple[int, int]], List[TileBlock]]:
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    ranges,
+    splits,
+    nodes,
+):
     kernel_shape, strides, dilations, pads = _conv_params(node)
     k_h = kernel_shape[0]
     s_h = strides[0]
@@ -428,11 +423,11 @@ def _build_conv_tiles(
     out_height = _tensor_height(node.outputs[0])
     out_ranges = partition_ranges(out_height, splits)
 
-    out_tiles: List[gs.Tensor] = []
-    blocks: List[TileBlock] = []
+    out_tiles = []
+    blocks = []
 
     for tile_id, (y0, y1) in enumerate(out_ranges):
-        block_nodes: List[gs.Node] = []
+        block_nodes = []
         slice_info = conv_input_slice_for_output(
             y0=y0,
             y1=y1,
@@ -502,14 +497,14 @@ def _build_conv_tiles(
 
 
 def _build_entry_tiles(
-    name_scope: NameScope,
-    entry: gs.Tensor,
-    splits: int,
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Tensor], List[Tuple[int, int]]]:
+    name_scope,
+    entry,
+    splits,
+    nodes,
+):
     h_in = _tensor_height(entry)
     ranges = partition_ranges(h_in, splits)
-    tiles: List[gs.Tensor] = []
+    tiles = []
     for start, end in ranges:
         tile = _make_slice(name_scope, entry, start, end, 2, nodes)
         tiles.append(tile)
@@ -517,11 +512,11 @@ def _build_entry_tiles(
 
 
 def _apply_schedule_priority(
-    blocks: List[TileBlock],
-    schedule: List[Tuple[int, int]],
-) -> Dict[gs.Node, int]:
+    blocks,
+    schedule,
+):
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    priority: Dict[gs.Node, int] = {}
+    priority = {}
     for block in blocks:
         order = schedule_pos.get((block.orig_index, block.tile_id))
         if order is None:
@@ -531,14 +526,14 @@ def _apply_schedule_priority(
 
 
 def rewrite_group(
-    graph: gs.Graph,
-    group_info: GroupInfo,
-    group_cfg: GroupConfig,
-    node_index_map: Dict[gs.Node, int],
-    name_scope: NameScope,
-) -> Tuple[List[gs.Node], gs.Tensor]:
-    nodes: List[gs.Node] = []
-    blocks: List[TileBlock] = []
+    graph,
+    group_info,
+    group_cfg,
+    node_index_map,
+    name_scope,
+):
+    nodes = []
+    blocks = []
 
     for node in group_info.nodes:
         _ensure_supported_op(node)
@@ -591,10 +586,10 @@ def rewrite_group(
 
 
 def rewrite_model(
-    model: onnx.ModelProto,
-    groups: List[GroupConfig],
-    verbose: bool = False,
-) -> onnx.ModelProto:
+    model,
+    groups,
+    verbose=False,
+):
     try:
         model = onnx.shape_inference.infer_shapes(model)
     except Exception as exc:
@@ -649,7 +644,7 @@ def rewrite_model(
     return out_model
 
 
-def _set_metadata(model: onnx.ModelProto, key: str, value: str) -> None:
+def _set_metadata(model, key, value):
     for prop in model.metadata_props:
         if prop.key == key:
             prop.value = value

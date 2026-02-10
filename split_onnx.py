@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import onnx
 
@@ -8,7 +6,7 @@ from src.rewrite import rewrite_model
 from src.verify import verify_models
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", required=True, help="Path to input ONNX model")
     parser.add_argument("--config", required=True, help="Path to config (json)")
@@ -18,7 +16,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
+def main():
     args = _parse_args()
     groups = parse_config(args.config)
 

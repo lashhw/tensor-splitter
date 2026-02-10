@@ -1,13 +1,9 @@
-from __future__ import annotations
-
-from typing import Dict, Tuple
-
 import numpy as np
 import onnx
 import onnxruntime as ort
 
 
-def _make_input_array(name: str, value_info) -> np.ndarray:
+def _make_input_array(name, value_info):
     tensor_type = value_info.type.tensor_type
     shape = []
     for dim in tensor_type.shape.dim:
@@ -29,12 +25,12 @@ def _make_input_array(name: str, value_info) -> np.ndarray:
     return data
 
 
-def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple[bool, Dict[str, float]]:
+def verify_models(original, rewritten):
     sess_options = ort.SessionOptions()
     sess_original = ort.InferenceSession(original.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
 
-    inputs: Dict[str, np.ndarray] = {}
+    inputs = {}
     for inp in original.graph.input:
         if any(init.name == inp.name for init in original.graph.initializer):
             continue
@@ -46,7 +42,7 @@ def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tupl
     if len(orig_outs) != len(new_outs):
         raise ValueError("output count mismatch between original and rewritten models")
 
-    diffs: Dict[str, float] = {}
+    diffs = {}
     for idx, (orig, new) in enumerate(zip(orig_outs, new_outs)):
         name = original.graph.output[idx].name
         diff = np.max(np.abs(orig - new))

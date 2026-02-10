@@ -1,8 +1,3 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
-
 from . import gs
 
 
@@ -10,31 +5,31 @@ class GraphError(ValueError):
     pass
 
 
-@dataclass
 class GroupInfo:
-    indices: Tuple[int, int]
-    nodes: List[gs.Node]
-    entry_tensor: gs.Tensor
-    exit_tensor: gs.Tensor
-    main_input_index: Dict[gs.Node, int]
+    def __init__(self, indices, nodes, entry_tensor, exit_tensor, main_input_index):
+        self.indices = indices
+        self.nodes = nodes
+        self.entry_tensor = entry_tensor
+        self.exit_tensor = exit_tensor
+        self.main_input_index = main_input_index
 
 
-def _is_constant(tensor: gs.Tensor) -> bool:
+def _is_constant(tensor):
     return isinstance(tensor, gs.Constant)
 
 
-def index_nodes(nodes: List[gs.Node]) -> Dict[gs.Node, int]:
+def index_nodes(nodes):
     return {node: idx for idx, node in enumerate(nodes)}
 
 
-def analyze_group(nodes: List[gs.Node], indices: Tuple[int, int]) -> GroupInfo:
+def analyze_group(nodes, indices):
     a, b = indices
     if a < 0 or b >= len(nodes) or b < a:
         raise GraphError(f"invalid group indices {indices} for graph with {len(nodes)} nodes")
 
     group_nodes = nodes[a : b + 1]
     group_set = set(group_nodes)
-    main_input_index: Dict[gs.Node, int] = {}
+    main_input_index = {}
 
     # Validate single-output constraint and linear chain.
     for node in group_nodes:

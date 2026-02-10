@@ -1,22 +1,17 @@
-from __future__ import annotations
-
 import json
-from dataclasses import dataclass
-from typing import Any, Iterable, List, Tuple
 
-
-@dataclass(frozen=True)
 class GroupConfig:
-    indices: Tuple[int, int]
-    splits: int
-    schedule: List[Tuple[int, int]]
+    def __init__(self, indices, splits, schedule):
+        self.indices = indices
+        self.splits = splits
+        self.schedule = schedule
 
 
 class ConfigError(ValueError):
     pass
 
 
-def _load_raw_config(path: str) -> Any:
+def _load_raw_config(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -24,7 +19,7 @@ def _load_raw_config(path: str) -> Any:
         raise ConfigError(f"Failed to parse config {path} as JSON.") from exc
 
 
-def _to_tuple_pair(value: Any, field: str) -> Tuple[int, int]:
+def _to_tuple_pair(value, field):
     if isinstance(value, list):
         value = tuple(value)
     if not isinstance(value, tuple) or len(value) != 2:
@@ -35,14 +30,14 @@ def _to_tuple_pair(value: Any, field: str) -> Tuple[int, int]:
         raise ConfigError(f"{field} must contain integers; got {value!r}") from exc
 
 
-def _normalize_schedule(schedule: Iterable[Any]) -> List[Tuple[int, int]]:
-    out: List[Tuple[int, int]] = []
+def _normalize_schedule(schedule):
+    out = []
     for entry in schedule:
         out.append(_to_tuple_pair(entry, "schedule entry"))
     return out
 
 
-def _validate_group(group: GroupConfig) -> None:
+def _validate_group(group):
     a, b = group.indices
     if a < 0 or b < 0 or b < a:
         raise ConfigError(f"indices must be non-negative and a<=b; got {group.indices}")
@@ -66,12 +61,12 @@ def _validate_group(group: GroupConfig) -> None:
         )
 
 
-def parse_config(path: str) -> List[GroupConfig]:
+def parse_config(path):
     raw = _load_raw_config(path)
     if not isinstance(raw, list):
         raise ConfigError("config must be a list of group entries")
 
-    groups: List[GroupConfig] = []
+    groups = []
     for idx, entry in enumerate(raw):
         if not isinstance(entry, dict):
             raise ConfigError(f"group {idx} must be a dict-like entry")
@@ -100,7 +95,7 @@ def parse_config(path: str) -> List[GroupConfig]:
     return groups
 
 
-def config_to_jsonable(groups: List[GroupConfig]) -> List[dict]:
+def config_to_jsonable(groups):
     out = []
     for group in groups:
         out.append(
