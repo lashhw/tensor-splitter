@@ -1,63 +1,126 @@
 # ONNX Tensor Splitter (Height Tiling)
 
-This tool rewrites an ONNX model to perform spatial tensor splitting along the Height axis (NCHW axis=2) for specified node index ranges. It focuses on Conv-heavy linear chains and preserves numerical results by introducing explicit halo handling.
+`tensor-splitter` rewrites ONNX models so selected node ranges run as **height tiles** (NCHW axis `2`) instead of full-height tensors.  
+It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
 
-## Usage
+## What this tool does
+
+Given an input model and a split plan, the tool:
+
+- Splits the chain input tensor into `N` height tiles.
+- Rewrites supported operators to run per tile.
+- Inserts/adjusts halo overlap for convolution correctness.
+- Reassembles the tiled results back into the original tensor layout.
+- Stores the execution schedule in model metadata (`tensor_split_schedule`).
+
+## Requirements
+
+- Python 3.9+
+- `onnx`
+- `onnxruntime` (only required for `--verify`)
+- `onnx-graphsurgeon`
+
+Install dependencies:
 
 ```bash
-python3 split_onnx.py --model model.onnx --config split_config.json --output split_model.onnx
+pip install -r requirements.txt
+# plus graphsurgeon if not already available in your environment
+pip install onnx-graphsurgeon
 ```
 
-Optional flags:
+## Quick start
+
+1. Prepare a JSON config file (see [Configuration format](#configuration-format)).
+2. Run the rewrite:
 
 ```bash
-python3 split_onnx.py --model model.onnx --config split_config.json --output split_model.onnx --verify --verbose
+python3 split_onnx.py \
+  --model model.onnx \
+  --config split_config.json \
+  --output split_model.onnx
 ```
 
-## Config format
+3. (Optional) Run numeric verification against the original model:
 
-Config is a list of dict-like entries. Example (Python literal):
+```bash
+python3 split_onnx.py \
+  --model model.onnx \
+  --config split_config.json \
+  --output split_model.onnx \
+  --verify --verbose
+```
 
-```python
+## CLI reference
+
+```text
+--model   Path to input ONNX model (required)
+--config  Path to split configuration JSON (required)
+--output  Path to output ONNX model (required)
+--verify  Run onnxruntime-based output comparison
+--verbose Enable verbose rewrite logging
+```
+
+## Configuration format
+
+The config must be a **JSON list** of group entries.
+
+Each group contains:
+
+- `indices`: `[start_node_index, end_node_index]` (inclusive)
+- `splits`: number of height tiles
+- `schedule`: list of `[node_index, split_id]` pairs
+
+### Example
+
+```json
 [
   {
-    "indices": (4, 6),
+    "indices": [4, 6],
     "splits": 2,
-    "schedule": [(4, 0), (4, 1), (5, 0), (5, 1), (6, 0), (6, 1)]
+    "schedule": [[4, 0], [4, 1], [5, 0], [5, 1], [6, 0], [6, 1]]
   },
   {
-    "indices": (10, 11),
+    "indices": [10, 11],
     "splits": 3,
-    "schedule": [(10, 0), (11, 0), (10, 1), (11, 1), (10, 2), (11, 2)]
+    "schedule": [[10, 0], [11, 0], [10, 1], [11, 1], [10, 2], [11, 2]]
   }
 ]
 ```
 
-JSON is also accepted (use lists instead of tuples). The tool stores the schedule as model metadata under `tensor_split_schedule`.
+### Validation rules
 
-## Supported ops (v1)
+- `indices` must be non-negative and `start <= end`.
+- `splits` must be `> 0`.
+- `schedule` must include every `(node_index, split_id)` in the group exactly once.
+- Group ranges must be disjoint and non-touching.
+
+## Supported operators (v1)
 
 - `Conv`
 - Unary: `Relu`, `Sigmoid`, `Tanh`, `Identity`
 - Unary with constant inputs: `Clip`, `BatchNormalization`
-- Binary: `Add`, `Mul`, `Sub`, `Div` (external inputs must be constants)
+- Binary: `Add`, `Mul`, `Sub`, `Div` (external non-constant inputs are not supported)
 
-## Constraints (v1)
+## Current constraints
 
-- Split axis is Height (NCHW axis=2).
-- Each group must be a linear chain: a single data input into the first node, and each node consumes the previous node output as its only data input.
-- The group must have a single exit tensor (output of node b).
-- External variable inputs (besides the chain input) are not supported.
+- Split axis is fixed to Height (NCHW axis `2`).
+- Each group must be a **linear chain**:
+  - single data input into first node,
+  - each node consumes the previous node output as its only data input,
+  - single exit tensor (output of node `end`).
 - Height must be statically known after shape inference.
 - `Conv` with `auto_pad` is not supported.
 
-## Tests
+## Testing
+
+Run the test suite:
 
 ```bash
 pytest -q
 ```
 
-## Notes
+## Troubleshooting
 
-- Install `onnx-graphsurgeon` via your package manager.
-- Verification uses onnxruntime CPU.
+- **Config parse error**: ensure config is valid JSON (not Python literal syntax).
+- **Schedule mismatch error**: verify every pair `(node_index, split_id)` appears exactly once.
+- **Verification failure**: rerun with `--verbose`, then inspect unsupported patterns in selected node ranges.
