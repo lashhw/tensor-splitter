@@ -1,6 +1,6 @@
 import numpy as np
 import onnx
-from src import gs
+import onnx_graphsurgeon as gs
 
 from src.config import GroupConfig
 from src.rewrite import rewrite_model

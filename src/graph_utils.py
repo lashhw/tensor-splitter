@@ -1,4 +1,4 @@
-from . import gs
+import onnx_graphsurgeon as gs
 
 
 class GroupInfo:

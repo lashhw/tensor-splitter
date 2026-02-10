@@ -1,7 +1,7 @@
 import numpy as np
 import onnx
+import onnx_graphsurgeon as gs
 
-from . import gs
 from .config import config_to_jsonable
 from .graph_utils import analyze_group
 from .tiling import conv_input_slice_for_output, conv_output_height, partition_ranges
