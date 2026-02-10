@@ -1,18 +1,11 @@
 import json
 
+
 class GroupConfig:
     def __init__(self, indices, splits, schedule):
         self.indices = indices
         self.splits = splits
         self.schedule = schedule
-
-
-def _load_raw_config(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Failed to parse config {path} as JSON.") from exc
 
 
 def _to_tuple_pair(value, field):
@@ -58,7 +51,8 @@ def _validate_group(group):
 
 
 def parse_config(path):
-    raw = _load_raw_config(path)
+    with open(path, "r") as f:
+        raw = json.load(f)
     if not isinstance(raw, list):
         raise ValueError("config must be a list of group entries")
 
@@ -77,11 +71,10 @@ def parse_config(path):
         _validate_group(group)
         groups.append(group)
 
-    # Ensure groups do not overlap.
     ranges = []
     for group in groups:
         ranges.append(group.indices)
-    ranges_sorted = sorted(ranges, key=lambda x: (x[0], x[1]))
+    ranges_sorted = sorted(ranges)
     for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
         if a1 <= b0:
             raise ValueError(

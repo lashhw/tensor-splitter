@@ -1,5 +1,3 @@
-import json
-
 import numpy as np
 import onnx
 
@@ -632,19 +630,5 @@ def rewrite_model(
     out_model = gs.export_onnx(graph)
     out_model = onnx.shape_inference.infer_shapes(out_model)
 
-    # Store schedule metadata.
-    schedule_json = json.dumps(config_to_jsonable(groups_sorted))
-    _set_metadata(out_model, "tensor_split_schedule", schedule_json)
-
     onnx.checker.check_model(out_model)
     return out_model
-
-
-def _set_metadata(model, key, value):
-    for prop in model.metadata_props:
-        if prop.key == key:
-            prop.value = value
-            return
-    prop = model.metadata_props.add()
-    prop.key = key
-    prop.value = value
