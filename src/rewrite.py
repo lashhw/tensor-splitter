@@ -18,12 +18,6 @@ class RewriteError(RuntimeError):
 
 
 @dataclass
-class RewriteStats:
-    groups_rewritten: int = 0
-    main_nodes_cloned: int = 0
-    new_nodes_inserted: int = 0
-
-
 class NameScope:
     def __init__(self, existing: Iterable[str]):
         self.existing = set(existing)
@@ -542,10 +536,9 @@ def rewrite_group(
     group_cfg: GroupConfig,
     node_index_map: Dict[gs.Node, int],
     name_scope: NameScope,
-) -> Tuple[List[gs.Node], gs.Tensor, RewriteStats]:
+) -> Tuple[List[gs.Node], gs.Tensor]:
     nodes: List[gs.Node] = []
     blocks: List[TileBlock] = []
-    stats = RewriteStats(groups_rewritten=1)
 
     for node in group_info.nodes:
         _ensure_supported_op(node)
@@ -567,23 +560,19 @@ def rewrite_group(
                 nodes,
             )
             blocks.extend(conv_blocks)
-            stats.main_nodes_cloned += len(conv_blocks)
         elif node.op in UNARY_OPS:
             tiles, op_blocks = _build_unary_tiles(name_scope, node, orig_index, tiles, nodes)
             blocks.extend(op_blocks)
-            stats.main_nodes_cloned += len(op_blocks)
         elif node.op in UNARY_CONST_OPS:
             tiles, op_blocks = _build_unary_const_tiles(
                 name_scope, node, orig_index, tiles, nodes, main_idx
             )
             blocks.extend(op_blocks)
-            stats.main_nodes_cloned += len(op_blocks)
         elif node.op in BINARY_OPS:
             tiles, op_blocks = _build_binary_tiles(
                 name_scope, node, orig_index, tiles, nodes, main_idx
             )
             blocks.extend(op_blocks)
-            stats.main_nodes_cloned += len(op_blocks)
         else:
             raise RewriteError(f"unsupported op {node.op}")
 
@@ -598,15 +587,14 @@ def rewrite_group(
     priority = _apply_schedule_priority(blocks, group_cfg.schedule)
     ordered_nodes = _toposort_with_priority(nodes, priority)
 
-    stats.new_nodes_inserted += len(ordered_nodes)
-    return ordered_nodes, concat_out, stats
+    return ordered_nodes, concat_out
 
 
 def rewrite_model(
     model: onnx.ModelProto,
     groups: List[GroupConfig],
     verbose: bool = False,
-) -> Tuple[onnx.ModelProto, RewriteStats]:
+) -> onnx.ModelProto:
     try:
         model = onnx.shape_inference.infer_shapes(model)
     except Exception as exc:
@@ -616,8 +604,6 @@ def rewrite_model(
     orig_nodes = list(graph.nodes)
     node_index_map = {node: idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope(graph.tensors().keys())
-
-    stats = RewriteStats()
 
     groups_sorted = sorted(groups, key=lambda g: g.indices[0])
     for group_cfg in groups_sorted:
@@ -632,7 +618,7 @@ def rewrite_model(
         if verbose:
             print(f"Rewriting group {group_cfg.indices} with {group_cfg.splits} splits")
 
-        new_nodes, concat_out, group_stats = rewrite_group(
+        new_nodes, concat_out = rewrite_group(
             graph, group_info, group_cfg, node_index_map, name_scope
         )
 
@@ -650,10 +636,6 @@ def rewrite_model(
 
         graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
 
-        stats.groups_rewritten += group_stats.groups_rewritten
-        stats.main_nodes_cloned += group_stats.main_nodes_cloned
-        stats.new_nodes_inserted += group_stats.new_nodes_inserted
-
     graph.cleanup(remove_unused_graph_inputs=False)
 
     out_model = gs.export_onnx(graph)
@@ -664,7 +646,7 @@ def rewrite_model(
     _set_metadata(out_model, "tensor_split_schedule", schedule_json)
 
     onnx.checker.check_model(out_model)
-    return out_model, stats
+    return out_model
 
 
 def _set_metadata(model: onnx.ModelProto, key: str, value: str) -> None:

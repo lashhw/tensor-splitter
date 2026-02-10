@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import json
 from dataclasses import dataclass
 from typing import Any, Iterable, List, Tuple
@@ -17,44 +16,12 @@ class ConfigError(ValueError):
     pass
 
 
-def _parse_python_literal(text: str, path: str) -> Any:
-    try:
-        return ast.literal_eval(text)
-    except Exception:
-        # Try to handle files that wrap the literal in an assignment.
-        try:
-            tree = ast.parse(text, filename=path, mode="exec")
-        except Exception as exc:
-            raise ConfigError(
-                f"Failed to parse config {path}. Provide JSON or a Python literal."
-            ) from exc
-
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                try:
-                    return ast.literal_eval(node.value)
-                except Exception:
-                    continue
-            if isinstance(node, ast.Expr):
-                try:
-                    return ast.literal_eval(node.value)
-                except Exception:
-                    continue
-
-        raise ConfigError(
-            f"Failed to parse config {path}. Provide JSON or a Python literal."
-        )
-
-
 def _load_raw_config(path: str) -> Any:
-    with open(path, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    # Prefer JSON if it parses cleanly.
     try:
-        return json.loads(text)
-    except Exception:
-        return _parse_python_literal(text, path)
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Failed to parse config {path} as JSON.") from exc
 
 
 def _to_tuple_pair(value: Any, field: str) -> Tuple[int, int]:

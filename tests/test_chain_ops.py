@@ -41,7 +41,7 @@ def test_chain_rewrite_matches() -> None:
             schedule=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
         )
     ]
-    rewritten, _ = rewrite_model(model, groups)
+    rewritten = rewrite_model(model, groups)
 
     import onnxruntime as ort
 

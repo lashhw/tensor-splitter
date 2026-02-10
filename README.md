@@ -5,7 +5,7 @@ This tool rewrites an ONNX model to perform spatial tensor splitting along the H
 ## Usage
 
 ```bash
-python3 split_onnx.py --model model.onnx --config split_config.py --output split_model.onnx
+python3 split_onnx.py --model model.onnx --config split_config.json --output split_model.onnx
 ```
 
 Optional flags:
@@ -59,5 +59,5 @@ pytest -q
 
 ## Notes
 
-- The tool uses the local TensorRT checkout’s `onnx-graphsurgeon` package by default.
+- Install `onnx-graphsurgeon` via your package manager.
 - Verification uses onnxruntime CPU.

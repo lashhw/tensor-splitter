@@ -27,7 +27,7 @@ def _make_conv_model() -> onnx.ModelProto:
 def test_small_conv_rewrite_matches() -> None:
     model = _make_conv_model()
     groups = [GroupConfig(indices=(0, 0), splits=2, schedule=[(0, 0), (0, 1)])]
-    rewritten, _ = rewrite_model(model, groups)
+    rewritten = rewrite_model(model, groups)
 
     import onnxruntime as ort
 
