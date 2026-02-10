@@ -1,4 +1,4 @@
-numpy
-onnx
-onnx-graphsurgeon
+--extra-index-url https://pypi.ngc.nvidia.com
+onnx==1.16.1
 onnxruntime
+onnx_graphsurgeon

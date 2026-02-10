@@ -12,7 +12,6 @@ def _parse_args():
     parser.add_argument("--config", required=True, help="Path to config (json)")
     parser.add_argument("--output", required=True, help="Path to output ONNX model")
     parser.add_argument("--verify", action="store_true", help="Run onnxruntime verification")
-    parser.add_argument("--verbose", action="store_true", help="Verbose logging")
     return parser.parse_args()
 
 
@@ -21,7 +20,7 @@ def main():
     groups = parse_config(args.config)
 
     model = onnx.load(args.model)
-    rewritten = rewrite_model(model, groups, verbose=args.verbose)
+    rewritten = rewrite_model(model, groups)
     onnx.save(rewritten, args.output)
 
     if args.verify:

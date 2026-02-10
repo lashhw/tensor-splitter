@@ -82,16 +82,3 @@ def parse_config(path):
             )
 
     return groups
-
-
-def config_to_jsonable(groups):
-    out = []
-    for group in groups:
-        out.append(
-            {
-                "indices": [group.indices[0], group.indices[1]],
-                "splits": group.splits,
-                "schedule": [[i, s] for i, s in group.schedule],
-            }
-        )
-    return out

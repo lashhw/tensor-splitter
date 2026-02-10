@@ -2,8 +2,7 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 
-from .config import config_to_jsonable
-from .graph_utils import analyze_group
+from .utils import analyze_group
 from .tiling import conv_input_slice_for_output, conv_output_height, partition_ranges
 
 
@@ -582,13 +581,8 @@ def rewrite_group(
 def rewrite_model(
     model,
     groups,
-    verbose=False,
 ):
-    try:
-        model = onnx.shape_inference.infer_shapes(model)
-    except Exception as exc:
-        raise RuntimeError(f"onnx.shape_inference failed: {exc}") from exc
-
+    model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
     node_index_map = {node: idx for idx, node in enumerate(orig_nodes)}
@@ -596,17 +590,7 @@ def rewrite_model(
 
     groups_sorted = sorted(groups, key=lambda g: g.indices[0])
     for group_cfg in groups_sorted:
-        node_a = orig_nodes[group_cfg.indices[0]]
-        node_b = orig_nodes[group_cfg.indices[1]]
-        if node_a not in graph.nodes or node_b not in graph.nodes:
-            raise RuntimeError(
-                f"group {group_cfg.indices} references nodes already rewritten or removed"
-            )
-
         group_info = analyze_group(orig_nodes, group_cfg.indices)
-        if verbose:
-            print(f"Rewriting group {group_cfg.indices} with {group_cfg.splits} splits")
-
         new_nodes, concat_out = rewrite_group(
             graph, group_info, group_cfg, node_index_map, name_scope
         )
@@ -618,6 +602,8 @@ def rewrite_model(
             node.outputs = []
 
         # Replace nodes in graph list.
+        node_a = orig_nodes[group_cfg.indices[0]]
+        node_b = orig_nodes[group_cfg.indices[1]]
         start_pos = graph.nodes.index(node_a)
         end_pos = graph.nodes.index(node_b)
         if end_pos < start_pos:
