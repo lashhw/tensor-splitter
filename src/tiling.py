@@ -1,7 +1,3 @@
-class TilingError(ValueError):
-    pass
-
-
 class ConvInputSlice:
     def __init__(self, slice_start, slice_end, pad_top, pad_bottom, x0, x1):
         self.slice_start = slice_start
@@ -14,11 +10,11 @@ class ConvInputSlice:
 
 def partition_ranges(total, splits):
     if total is None or total <= 0:
-        raise TilingError(f"total must be > 0; got {total}")
+        raise ValueError(f"total must be > 0; got {total}")
     if splits <= 0:
-        raise TilingError(f"splits must be > 0; got {splits}")
+        raise ValueError(f"splits must be > 0; got {splits}")
     if splits > total:
-        raise TilingError(
+        raise ValueError(
             f"cannot split dimension {total} into {splits} non-empty tiles"
         )
     base = total // splits
@@ -47,7 +43,7 @@ def conv_input_slice_for_output(
     h_in,
 ):
     if y1 <= y0:
-        raise TilingError(f"invalid output range [{y0},{y1})")
+        raise ValueError(f"invalid output range [{y0},{y1})")
     rf = receptive_field(kernel, dilation)
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + rf

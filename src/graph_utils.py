@@ -1,10 +1,6 @@
 from . import gs
 
 
-class GraphError(ValueError):
-    pass
-
-
 class GroupInfo:
     def __init__(self, indices, nodes, entry_tensor, exit_tensor, main_input_index):
         self.indices = indices
@@ -25,7 +21,7 @@ def index_nodes(nodes):
 def analyze_group(nodes, indices):
     a, b = indices
     if a < 0 or b >= len(nodes) or b < a:
-        raise GraphError(f"invalid group indices {indices} for graph with {len(nodes)} nodes")
+        raise ValueError(f"invalid group indices {indices} for graph with {len(nodes)} nodes")
 
     group_nodes = nodes[a : b + 1]
     group_set = set(group_nodes)
@@ -34,7 +30,7 @@ def analyze_group(nodes, indices):
     # Validate single-output constraint and linear chain.
     for node in group_nodes:
         if len(node.outputs) != 1:
-            raise GraphError(
+            raise ValueError(
                 f"node {node.name or node.op} must have a single output for v1 tiling"
             )
 
@@ -46,13 +42,13 @@ def analyze_group(nodes, indices):
             continue
         producers = [p for p in inp.inputs if p in group_set]
         if producers:
-            raise GraphError(
+            raise ValueError(
                 f"group entry node has input produced within group: {inp.name}"
             )
         entry_candidates.append((idx, inp))
 
     if len(entry_candidates) != 1:
-        raise GraphError(
+        raise ValueError(
             "group entry node must have exactly one non-constant input from outside the group"
         )
     main_input_index[first] = entry_candidates[0][0]
@@ -70,12 +66,12 @@ def analyze_group(nodes, indices):
                 from_group.append((idx, inp, producers))
 
         if len(from_group) != 1:
-            raise GraphError(
+            raise ValueError(
                 f"node {node.name or node.op} must have exactly one data input from within group"
             )
         idx, main_inp, producers = from_group[0]
         if prev not in producers:
-            raise GraphError(
+            raise ValueError(
                 f"node {node.name or node.op} data input must come from previous node in group"
             )
         main_input_index[node] = idx
@@ -85,7 +81,7 @@ def analyze_group(nodes, indices):
                 continue
             # Disallow external variable inputs for v1.
             if not _is_constant(inp):
-                raise GraphError(
+                raise ValueError(
                     f"node {node.name or node.op} has unsupported external variable input {inp.name}"
                 )
 
@@ -96,10 +92,10 @@ def analyze_group(nodes, indices):
             if consumer is nxt:
                 continue
             if consumer in group_set:
-                raise GraphError(
+                raise ValueError(
                     f"node {node.name or node.op} output is consumed by another node in group"
                 )
-            raise GraphError(
+            raise ValueError(
                 f"node {node.name or node.op} output is consumed outside the group; v1 requires linear chain"
             )
 

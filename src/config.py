@@ -7,27 +7,23 @@ class GroupConfig:
         self.schedule = schedule
 
 
-class ConfigError(ValueError):
-    pass
-
-
 def _load_raw_config(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError as exc:
-        raise ConfigError(f"Failed to parse config {path} as JSON.") from exc
+        raise ValueError(f"Failed to parse config {path} as JSON.") from exc
 
 
 def _to_tuple_pair(value, field):
     if isinstance(value, list):
         value = tuple(value)
     if not isinstance(value, tuple) or len(value) != 2:
-        raise ConfigError(f"{field} must be a tuple/list of length 2; got {value!r}")
+        raise ValueError(f"{field} must be a tuple/list of length 2; got {value!r}")
     try:
         return int(value[0]), int(value[1])
     except Exception as exc:
-        raise ConfigError(f"{field} must contain integers; got {value!r}") from exc
+        raise ValueError(f"{field} must contain integers; got {value!r}") from exc
 
 
 def _normalize_schedule(schedule):
@@ -40,13 +36,13 @@ def _normalize_schedule(schedule):
 def _validate_group(group):
     a, b = group.indices
     if a < 0 or b < 0 or b < a:
-        raise ConfigError(f"indices must be non-negative and a<=b; got {group.indices}")
+        raise ValueError(f"indices must be non-negative and a<=b; got {group.indices}")
     if group.splits <= 0:
-        raise ConfigError(f"splits must be > 0; got {group.splits}")
+        raise ValueError(f"splits must be > 0; got {group.splits}")
 
     expected = [(i, s) for i in range(a, b + 1) for s in range(group.splits)]
     if len(group.schedule) != len(expected):
-        raise ConfigError(
+        raise ValueError(
             "schedule length mismatch: expected "
             f"{len(expected)} entries, got {len(group.schedule)}"
         )
@@ -55,7 +51,7 @@ def _validate_group(group):
     if expected_set != schedule_set:
         missing = sorted(expected_set - schedule_set)
         extra = sorted(schedule_set - expected_set)
-        raise ConfigError(
+        raise ValueError(
             "schedule entries must cover each (node_index, split_id) exactly once. "
             f"Missing: {missing}, Extra: {extra}"
         )
@@ -64,14 +60,14 @@ def _validate_group(group):
 def parse_config(path):
     raw = _load_raw_config(path)
     if not isinstance(raw, list):
-        raise ConfigError("config must be a list of group entries")
+        raise ValueError("config must be a list of group entries")
 
     groups = []
     for idx, entry in enumerate(raw):
         if not isinstance(entry, dict):
-            raise ConfigError(f"group {idx} must be a dict-like entry")
+            raise ValueError(f"group {idx} must be a dict-like entry")
         if "indices" not in entry or "splits" not in entry or "schedule" not in entry:
-            raise ConfigError(
+            raise ValueError(
                 f"group {idx} missing required keys: indices, splits, schedule"
             )
         indices = _to_tuple_pair(entry["indices"], "indices")
@@ -88,7 +84,7 @@ def parse_config(path):
     ranges_sorted = sorted(ranges, key=lambda x: (x[0], x[1]))
     for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
         if a1 <= b0:
-            raise ConfigError(
+            raise ValueError(
                 f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
             )
 

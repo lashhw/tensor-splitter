@@ -9,10 +9,6 @@ from .graph_utils import analyze_group
 from .tiling import conv_input_slice_for_output, conv_output_height, partition_ranges
 
 
-class RewriteError(RuntimeError):
-    pass
-
-
 class NameScope:
     def __init__(self, existing):
         self.existing = set(existing)
@@ -69,13 +65,13 @@ def _as_int_list(value, length=None):
     else:
         out = [int(value)]
     if length is not None and len(out) != length:
-        raise RewriteError(f"expected list of length {length}, got {out}")
+        raise RuntimeError(f"expected list of length {length}, got {out}")
     return out
 
 
 def _require_static_dim(dim, name):
     if dim is None or isinstance(dim, str):
-        raise RewriteError(f"{name} must be static; got {dim}")
+        raise RuntimeError(f"{name} must be static; got {dim}")
     return int(dim)
 
 
@@ -87,9 +83,9 @@ def _tensor_rank(tensor):
 
 def _tensor_height(tensor, axis=2):
     if not hasattr(tensor, "shape") or tensor.shape is None:
-        raise RewriteError(f"tensor {tensor.name} has no static shape information")
+        raise RuntimeError(f"tensor {tensor.name} has no static shape information")
     if len(tensor.shape) <= axis:
-        raise RewriteError(f"tensor {tensor.name} rank is too small for axis {axis}")
+        raise RuntimeError(f"tensor {tensor.name} rank is too small for axis {axis}")
     return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
 
 
@@ -137,7 +133,7 @@ def _make_concat(
     shape_hint=None,
 ):
     if not inputs:
-        raise RewriteError("concat inputs must be non-empty")
+        raise RuntimeError("concat inputs must be non-empty")
     out_shape = None
     if shape_hint is not None:
         out_shape = list(shape_hint)
@@ -157,7 +153,7 @@ def _slice_from_tiles(
     nodes,
 ):
     if start >= end:
-        raise RewriteError(f"invalid slice range [{start},{end})")
+        raise RuntimeError(f"invalid slice range [{start},{end})")
     pieces = []
     for tile, (s, e) in zip(tiles, ranges):
         overlap_start = max(s, start)
@@ -173,7 +169,7 @@ def _slice_from_tiles(
             pieces.append(piece)
 
     if not pieces:
-        raise RewriteError(f"slice [{start},{end}) does not overlap any tiles")
+        raise RuntimeError(f"slice [{start},{end}) does not overlap any tiles")
     if len(pieces) == 1:
         return pieces[0]
 
@@ -192,7 +188,7 @@ def _make_pad(
 ):
     rank = _tensor_rank(data)
     if rank != 4:
-        raise RewriteError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
+        raise RuntimeError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
     pads = [0, 0, pad_top, 0, 0, 0, pad_bottom, 0]
     pads_const = _make_constant(name_scope, np.array(pads, dtype=np.int64))
     const_dtype = data.dtype or np.float32
@@ -217,7 +213,7 @@ def _make_pad(
 def _conv_params(node):
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     if auto_pad not in (None, "NOTSET", ""):
-        raise RewriteError(f"Conv auto_pad {auto_pad} not supported in v1")
+        raise RuntimeError(f"Conv auto_pad {auto_pad} not supported in v1")
 
     strides = _as_int_list(_get_attr(node, "strides", [1, 1]), length=2)
     dilations = _as_int_list(_get_attr(node, "dilations", [1, 1]), length=2)
@@ -226,15 +222,15 @@ def _conv_params(node):
 
     if kernel_shape is None:
         if len(node.inputs) < 2:
-            raise RewriteError("Conv node missing weight input for kernel_shape inference")
+            raise RuntimeError("Conv node missing weight input for kernel_shape inference")
         weight = node.inputs[1]
         if not hasattr(weight, "shape") or weight.shape is None:
-            raise RewriteError("Conv weight has no shape for kernel_shape inference")
+            raise RuntimeError("Conv weight has no shape for kernel_shape inference")
         if len(weight.shape) < 4:
-            raise RewriteError("Conv weight has invalid shape for kernel_shape inference")
+            raise RuntimeError("Conv weight has invalid shape for kernel_shape inference")
         kernel_shape = [int(weight.shape[-2]), int(weight.shape[-1])]
     if len(kernel_shape) != 2:
-        raise RewriteError(f"Only 2D Conv supported; got kernel_shape {kernel_shape}")
+        raise RuntimeError(f"Only 2D Conv supported; got kernel_shape {kernel_shape}")
 
     return kernel_shape, strides, dilations, pads
 
@@ -277,7 +273,7 @@ def _toposort_with_priority(nodes, priority):
                 heapq.heappush(heap, (priority.get(nxt, 10**9), order[nxt], nxt))
 
     if len(result) != len(nodes):
-        raise RewriteError("cycle detected while ordering rewritten nodes")
+        raise RuntimeError("cycle detected while ordering rewritten nodes")
     return result
 
 
@@ -300,7 +296,7 @@ def _ensure_supported_op(node):
         return
     if node.op == "Conv":
         return
-    raise RewriteError(f"unsupported op {node.op} for v1 tiling")
+    raise RuntimeError(f"unsupported op {node.op} for v1 tiling")
 
 
 def _build_unary_tiles(
@@ -346,7 +342,7 @@ def _build_unary_const_tiles(
             if idx == main_input_index:
                 continue
             if not isinstance(inp, gs.Constant):
-                raise RewriteError(
+                raise RuntimeError(
                     f"node {node.name or node.op} has unsupported external variable input {inp.name}"
                 )
         out_shape = tile.shape if hasattr(tile, "shape") else None
@@ -381,7 +377,7 @@ def _build_binary_tiles(
             if idx == main_input_index:
                 continue
             if not isinstance(inp, gs.Constant):
-                raise RewriteError(
+                raise RuntimeError(
                     f"binary op {node.name or node.op} requires constant external input; got {inp.name}"
                 )
         out_shape = tile.shape if hasattr(tile, "shape") else None
@@ -417,7 +413,7 @@ def _build_conv_tiles(
     h_in = ranges[-1][1]
     actual_h_in = _tensor_height(node.inputs[0])
     if actual_h_in != h_in:
-        raise RewriteError(
+        raise RuntimeError(
             f"Conv input height mismatch: tiles cover {h_in}, but tensor shape is {actual_h_in}"
         )
     out_height = _tensor_height(node.outputs[0])
@@ -484,7 +480,7 @@ def _build_conv_tiles(
 
         if expected != (y1 - y0):
             if expected < (y1 - y0):
-                raise RewriteError(
+                raise RuntimeError(
                     f"Conv tile output shorter than expected: expected {y1 - y0}, got {expected}"
                 )
             conv_out = _make_slice(name_scope, conv_out, 0, y1 - y0, 2, block_nodes)
@@ -569,7 +565,7 @@ def rewrite_group(
             )
             blocks.extend(op_blocks)
         else:
-            raise RewriteError(f"unsupported op {node.op}")
+            raise RuntimeError(f"unsupported op {node.op}")
 
     concat_out = _make_concat(
         name_scope,
@@ -593,7 +589,7 @@ def rewrite_model(
     try:
         model = onnx.shape_inference.infer_shapes(model)
     except Exception as exc:
-        raise RewriteError(f"onnx.shape_inference failed: {exc}") from exc
+        raise RuntimeError(f"onnx.shape_inference failed: {exc}") from exc
 
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
@@ -605,7 +601,7 @@ def rewrite_model(
         node_a = orig_nodes[group_cfg.indices[0]]
         node_b = orig_nodes[group_cfg.indices[1]]
         if node_a not in graph.nodes or node_b not in graph.nodes:
-            raise RewriteError(
+            raise RuntimeError(
                 f"group {group_cfg.indices} references nodes already rewritten or removed"
             )
 
@@ -627,7 +623,7 @@ def rewrite_model(
         start_pos = graph.nodes.index(node_a)
         end_pos = graph.nodes.index(node_b)
         if end_pos < start_pos:
-            raise RewriteError("group nodes are not contiguous in current graph")
+            raise RuntimeError("group nodes are not contiguous in current graph")
 
         graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
 
