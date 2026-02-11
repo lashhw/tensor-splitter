@@ -1,4 +1,5 @@
 import argparse
+
 import onnx
 
 from src.config import parse_config
@@ -17,10 +18,13 @@ def _parse_args():
 
 def main():
     args = _parse_args()
+
     groups = parse_config(args.config)
 
     model = onnx.load(args.model)
+
     rewritten = rewrite_model(model, groups)
+
     onnx.save(rewritten, args.output)
 
     if args.verify:

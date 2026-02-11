@@ -1,14 +1,22 @@
+from __future__ import annotations
+
 import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, List, Sequence, Tuple
+
+IndexPair = Tuple[int, int]
+ScheduleEntry = Tuple[int, int]
 
 
+@dataclass(frozen=True)
 class GroupConfig:
-    def __init__(self, indices, splits, schedule):
-        self.indices = indices
-        self.splits = splits
-        self.schedule = schedule
+    indices: IndexPair
+    splits: int
+    schedule: List[ScheduleEntry]
 
 
-def _to_tuple_pair(value, field):
+def _to_tuple_pair(value, field: str) -> IndexPair:
     if isinstance(value, list):
         value = tuple(value)
     if not isinstance(value, tuple) or len(value) != 2:
@@ -19,14 +27,11 @@ def _to_tuple_pair(value, field):
         raise ValueError(f"{field} must contain integers; got {value!r}") from exc
 
 
-def _normalize_schedule(schedule):
-    out = []
-    for entry in schedule:
-        out.append(_to_tuple_pair(entry, "schedule entry"))
-    return out
+def _normalize_schedule(schedule: Iterable) -> List[ScheduleEntry]:
+    return [_to_tuple_pair(entry, "schedule entry") for entry in schedule]
 
 
-def _validate_group(group):
+def _validate_group(group: GroupConfig) -> None:
     a, b = group.indices
     if a < 0 or b < 0 or b < a:
         raise ValueError(f"indices must be non-negative and a<=b; got {group.indices}")
@@ -39,6 +44,7 @@ def _validate_group(group):
             "schedule length mismatch: expected "
             f"{len(expected)} entries, got {len(group.schedule)}"
         )
+
     expected_set = set(expected)
     schedule_set = set(group.schedule)
     if expected_set != schedule_set:
@@ -50,9 +56,17 @@ def _validate_group(group):
         )
 
 
-def parse_config(path):
-    with open(path, "r") as f:
+def _validate_ranges(groups: Sequence[GroupConfig]) -> None:
+    ranges_sorted = sorted(group.indices for group in groups)
+    for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
+        if a1 <= b0:
+            raise ValueError(f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}")
+
+
+def parse_config(path: str | Path) -> List[GroupConfig]:
+    with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
+
     if not isinstance(raw, list):
         raise ValueError("config must be a list of group entries")
 
@@ -64,21 +78,14 @@ def parse_config(path):
             raise ValueError(
                 f"group {idx} missing required keys: indices, splits, schedule"
             )
-        indices = _to_tuple_pair(entry["indices"], "indices")
-        splits = int(entry["splits"])
-        schedule = _normalize_schedule(entry["schedule"])
-        group = GroupConfig(indices=indices, splits=splits, schedule=schedule)
+
+        group = GroupConfig(
+            indices=_to_tuple_pair(entry["indices"], "indices"),
+            splits=int(entry["splits"]),
+            schedule=_normalize_schedule(entry["schedule"]),
+        )
         _validate_group(group)
         groups.append(group)
 
-    ranges = []
-    for group in groups:
-        ranges.append(group.indices)
-    ranges_sorted = sorted(ranges)
-    for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
-        if a1 <= b0:
-            raise ValueError(
-                f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
-            )
-
+    _validate_ranges(groups)
     return groups
