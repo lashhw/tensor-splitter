@@ -1,14 +1,18 @@
+from dataclasses import dataclass
+from typing import List, Tuple
+
+
+@dataclass(frozen=True)
 class ConvInputSlice:
-    def __init__(self, slice_start, slice_end, pad_top, pad_bottom, x0, x1):
-        self.slice_start = slice_start
-        self.slice_end = slice_end
-        self.pad_top = pad_top
-        self.pad_bottom = pad_bottom
-        self.x0 = x0
-        self.x1 = x1
+    slice_start: int
+    slice_end: int
+    pad_top: int
+    pad_bottom: int
+    x0: int
+    x1: int
 
 
-def partition_ranges(total, splits):
+def partition_ranges(total: int, splits: int) -> List[Tuple[int, int]]:
     if total is None or total <= 0:
         raise ValueError(f"total must be > 0; got {total}")
     if splits <= 0:
@@ -29,19 +33,19 @@ def partition_ranges(total, splits):
     return ranges
 
 
-def receptive_field(kernel, dilation):
+def receptive_field(kernel: int, dilation: int) -> int:
     return (kernel - 1) * dilation + 1
 
 
 def conv_input_slice_for_output(
-    y0,
-    y1,
-    stride,
-    dilation,
-    kernel,
-    pad_top,
-    h_in,
-):
+    y0: int,
+    y1: int,
+    stride: int,
+    dilation: int,
+    kernel: int,
+    pad_top: int,
+    h_in: int,
+) -> ConvInputSlice:
     if y1 <= y0:
         raise ValueError(f"invalid output range [{y0},{y1})")
     rf = receptive_field(kernel, dilation)
@@ -62,12 +66,12 @@ def conv_input_slice_for_output(
 
 
 def conv_output_height(
-    h_in,
-    kernel,
-    stride,
-    dilation,
-    pad_top,
-    pad_bottom,
-):
+    h_in: int,
+    kernel: int,
+    stride: int,
+    dilation: int,
+    pad_top: int,
+    pad_bottom: int,
+) -> int:
     rf = receptive_field(kernel, dilation)
     return ((h_in + pad_top + pad_bottom - rf) // stride) + 1

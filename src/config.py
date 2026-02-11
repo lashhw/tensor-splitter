@@ -1,14 +1,20 @@
 import json
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
 
 
+IndexPair = Tuple[int, int]
+ScheduleEntry = Tuple[int, int]
+
+
+@dataclass(frozen=True)
 class GroupConfig:
-    def __init__(self, indices, splits, schedule):
-        self.indices = indices
-        self.splits = splits
-        self.schedule = schedule
+    indices: IndexPair
+    splits: int
+    schedule: List[ScheduleEntry]
 
 
-def _to_tuple_pair(value, field):
+def _to_tuple_pair(value, field: str) -> IndexPair:
     if isinstance(value, list):
         value = tuple(value)
     if not isinstance(value, tuple) or len(value) != 2:
@@ -19,21 +25,21 @@ def _to_tuple_pair(value, field):
         raise ValueError(f"{field} must contain integers; got {value!r}") from exc
 
 
-def _normalize_schedule(schedule):
-    out = []
+def _normalize_schedule(schedule: Sequence[Sequence[int]]) -> List[ScheduleEntry]:
+    out: List[ScheduleEntry] = []
     for entry in schedule:
         out.append(_to_tuple_pair(entry, "schedule entry"))
     return out
 
 
-def _validate_group(group):
-    a, b = group.indices
-    if a < 0 or b < 0 or b < a:
+def _validate_group(group: GroupConfig) -> None:
+    start, end = group.indices
+    if start < 0 or end < 0 or end < start:
         raise ValueError(f"indices must be non-negative and a<=b; got {group.indices}")
     if group.splits <= 0:
         raise ValueError(f"splits must be > 0; got {group.splits}")
 
-    expected = [(i, s) for i in range(a, b + 1) for s in range(group.splits)]
+    expected = [(i, s) for i in range(start, end + 1) for s in range(group.splits)]
     if len(group.schedule) != len(expected):
         raise ValueError(
             "schedule length mismatch: expected "
@@ -50,13 +56,13 @@ def _validate_group(group):
         )
 
 
-def parse_config(path):
-    with open(path, "r") as f:
+def parse_config(path: str) -> List[GroupConfig]:
+    with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
     if not isinstance(raw, list):
         raise ValueError("config must be a list of group entries")
 
-    groups = []
+    groups: List[GroupConfig] = []
     for idx, entry in enumerate(raw):
         if not isinstance(entry, dict):
             raise ValueError(f"group {idx} must be a dict-like entry")
@@ -71,14 +77,14 @@ def parse_config(path):
         _validate_group(group)
         groups.append(group)
 
-    ranges = []
+    ranges: List[IndexPair] = []
     for group in groups:
         ranges.append(group.indices)
     ranges_sorted = sorted(ranges)
-    for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
-        if a1 <= b0:
+    for (start0, end0), (start1, end1) in zip(ranges_sorted, ranges_sorted[1:]):
+        if start1 <= end0:
             raise ValueError(
-                f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
+                f"group ranges overlap or touch: {(start0, end0)} and {(start1, end1)}"
             )
 
     return groups

@@ -36,7 +36,7 @@ python3 split_onnx.py \
   --model model.onnx \
   --config split_config.json \
   --output split_model.onnx \
-  --verify --verbose
+  --verify
 ```
 
 ## CLI reference
@@ -46,8 +46,18 @@ python3 split_onnx.py \
 --config  Path to split configuration JSON (required)
 --output  Path to output ONNX model (required)
 --verify  Run onnxruntime-based output comparison
---verbose Enable verbose rewrite logging
 ```
+
+## Project layout
+
+- `split_onnx.py` CLI entry point (thin wrapper around `src/cli.py`)
+- `src/cli.py` argument parsing + model IO
+- `src/rewrite/` graph rewrite pipeline (tiling, node synthesis, graph assembly)
+- `src/group_analysis.py` linear-chain group validation and metadata extraction
+- `src/tiling.py` convolution tiling math helpers
+- `src/config.py` config parsing + validation
+- `src/verify.py` onnxruntime-based verification
+- `tests/` unit tests
 
 ## Configuration format
 
