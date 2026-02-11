@@ -5,7 +5,7 @@ from typing import List, Optional, Sequence
 import numpy as np
 import onnx_graphsurgeon as gs
 
-from .types import NameScope
+from .naming import NameScope
 
 
 def _get_attr(node: gs.Node, name: str, default=None):
@@ -177,7 +177,7 @@ def _make_pad(
 def _conv_params(node: gs.Node):
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     if auto_pad not in (None, "NOTSET", ""):
-        raise RuntimeError(f"Conv auto_pad {auto_pad} not supported in v1")
+        raise RuntimeError(f"Conv auto_pad {auto_pad} is not supported")
 
     strides = _as_int_list(_get_attr(node, "strides", [1, 1]), length=2)
     dilations = _as_int_list(_get_attr(node, "dilations", [1, 1]), length=2)

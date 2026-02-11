@@ -3,10 +3,10 @@ from __future__ import annotations
 import onnx
 import onnx_graphsurgeon as gs
 
-from ..utils import analyze_group
-from .graph_utils import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
-from .tile_builders import _apply_schedule_priority, _build_group_output, _build_group_tiles
-from .types import NameScope
+from ..analysis.group_chain import analyze_group
+from .naming import NameScope
+from .op_rewriters import _apply_schedule_priority, _build_group_output, _build_group_tiles
+from .scheduling import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
 
 
 def rewrite_group(

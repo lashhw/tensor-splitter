@@ -4,8 +4,8 @@ from typing import Dict, List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from ..tiling import conv_input_slice_for_output, conv_output_height, partition_ranges
-from .tensor_ops import (
+from ..tiling.geometry import conv_input_slice_for_output, conv_output_height, partition_ranges
+from .graph_ops import (
     _clone_shape_with_height,
     _conv_attrs_with_height_pad,
     _conv_params,
@@ -15,7 +15,8 @@ from .tensor_ops import (
     _slice_from_tiles,
     _tensor_height,
 )
-from .types import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, NameScope, TileBlock
+from .models import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
+from .naming import NameScope
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
@@ -27,7 +28,7 @@ def _ensure_supported_op(node: gs.Node) -> None:
         return
     if node.op == "Conv":
         return
-    raise RuntimeError(f"unsupported op {node.op} for v1 tiling")
+    raise RuntimeError(f"unsupported op {node.op} for tiled rewrite")
 
 
 def _build_unary_tiles(
@@ -147,7 +148,7 @@ def _build_conv_tiles(
     orig_index: int,
     tiles,
     ranges: Sequence[Tuple[int, int]],
-    splits: int,
+    tile_count: int,
     nodes: List[gs.Node],
 ):
     kernel_shape, strides, dilations, pads = _conv_params(node)
@@ -164,7 +165,7 @@ def _build_conv_tiles(
         )
 
     out_height = _tensor_height(node.outputs[0])
-    out_ranges = partition_ranges(out_height, splits)
+    out_ranges = partition_ranges(out_height, tile_count)
 
     out_tiles = []
     blocks = []
@@ -242,11 +243,11 @@ def _build_conv_tiles(
 def _build_entry_tiles(
     name_scope: NameScope,
     entry,
-    splits: int,
+    tile_count: int,
     nodes: List[gs.Node],
 ):
     h_in = _tensor_height(entry)
-    ranges = partition_ranges(h_in, splits)
+    ranges = partition_ranges(h_in, tile_count)
     tiles = []
     for start, end in ranges:
         tile = _make_slice(name_scope, entry, start, end, 2, nodes)
@@ -271,12 +272,12 @@ def _build_tiled_op(
     orig_index: int,
     tiles,
     ranges,
-    splits: int,
+    tile_count: int,
     nodes: List[gs.Node],
     main_idx: int,
 ):
     if node.op == "Conv":
-        return _build_conv_tiles(name_scope, node, orig_index, tiles, ranges, splits, nodes)
+        return _build_conv_tiles(name_scope, node, orig_index, tiles, ranges, tile_count, nodes)
     if node.op in UNARY_OPS:
         next_tiles, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles, nodes)
         return next_tiles, ranges, blocks

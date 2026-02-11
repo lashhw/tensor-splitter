@@ -2,9 +2,9 @@ import argparse
 
 import onnx
 
-from src.config import parse_config
-from src.rewrite import rewrite_model
-from src.verify import verify_models
+from tensor_splitter.config import parse_config
+from tensor_splitter.rewrite import rewrite_model
+from tensor_splitter.verification import verify_models
 
 
 def _parse_args():

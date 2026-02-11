@@ -14,19 +14,19 @@ class ConvInputSlice:
     x1: int
 
 
-def partition_ranges(total: int, splits: int) -> List[Tuple[int, int]]:
+def partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
     if total is None or total <= 0:
         raise ValueError(f"total must be > 0; got {total}")
-    if splits <= 0:
-        raise ValueError(f"splits must be > 0; got {splits}")
-    if splits > total:
-        raise ValueError(f"cannot split dimension {total} into {splits} non-empty tiles")
+    if tile_count <= 0:
+        raise ValueError(f"tile_count must be > 0; got {tile_count}")
+    if tile_count > total:
+        raise ValueError(f"cannot split dimension {total} into {tile_count} non-empty tiles")
 
-    base = total // splits
-    rem = total % splits
+    base = total // tile_count
+    rem = total % tile_count
     ranges = []
     start = 0
-    for i in range(splits):
+    for i in range(tile_count):
         size = base + (1 if i < rem else 0)
         end = start + size
         ranges.append((start, end))

@@ -25,7 +25,7 @@ pip install -r requirements.txt
 2. Run the rewrite:
 
 ```bash
-python3 split_onnx.py \
+python3 -m tensor_splitter.cli \
   --model model.onnx \
   --config split_config.json \
   --output split_model.onnx
@@ -34,7 +34,7 @@ python3 split_onnx.py \
 3. (Optional) Run numeric verification against the original model:
 
 ```bash
-python3 split_onnx.py \
+python3 -m tensor_splitter.cli \
   --model model.onnx \
   --config split_config.json \
   --output split_model.onnx \
@@ -94,13 +94,14 @@ pytest -q
 
 ## Project layout
 
-- `split_onnx.py`: CLI entry point.
-- `src/config.py`: config parsing and validation.
-- `src/tiling.py`: tensor-range and convolution halo math.
-- `src/utils.py`: group analysis and graph constraints.
-- `src/rewrite.py`: compatibility shim exporting `rewrite_model`.
-- `src/rewriter/rewriter.py`: high-level model rewrite pipeline.
-- `src/rewriter/tile_builders.py`: op-specific tiled graph construction.
-- `src/rewriter/tensor_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
-- `src/rewriter/graph_utils.py`: graph ordering and consumer rewiring utilities.
-- `src/rewriter/types.py`: small shared data structures/constants.
+- `tensor_splitter/cli.py`: CLI entry point.
+- `tensor_splitter/config.py`: config parsing and validation.
+- `tensor_splitter/verification.py`: numerical output comparison with ONNX Runtime.
+- `tensor_splitter/analysis/group_chain.py`: group analysis and graph constraints.
+- `tensor_splitter/tiling/geometry.py`: tensor-range and convolution halo math.
+- `tensor_splitter/rewrite/pipeline.py`: high-level model rewrite pipeline.
+- `tensor_splitter/rewrite/op_rewriters.py`: op-specific tiled graph construction.
+- `tensor_splitter/rewrite/graph_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
+- `tensor_splitter/rewrite/scheduling.py`: graph ordering and consumer rewiring utilities.
+- `tensor_splitter/rewrite/models.py`: tile block model and supported op sets.
+- `tensor_splitter/rewrite/naming.py`: graph-safe rewritten name generation.

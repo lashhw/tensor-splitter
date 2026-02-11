@@ -8,7 +8,7 @@ import onnx_graphsurgeon as gs
 
 @dataclass(frozen=True)
 class GroupInfo:
-    indices: Tuple[int, int]
+    node_range: Tuple[int, int]
     nodes: Sequence[gs.Node]
     entry_tensor: gs.Variable
     exit_tensor: gs.Variable
@@ -23,10 +23,10 @@ def _node_label(node: gs.Node) -> str:
     return node.name or node.op
 
 
-def analyze_group(nodes, indices) -> GroupInfo:
-    a, b = indices
+def analyze_group(nodes, node_range) -> GroupInfo:
+    a, b = node_range
     if a < 0 or b >= len(nodes) or b < a:
-        raise ValueError(f"invalid group indices {indices} for graph with {len(nodes)} nodes")
+        raise ValueError(f"invalid group node_range {node_range} for graph with {len(nodes)} nodes")
 
     group_nodes = nodes[a : b + 1]
     group_set = {id(node) for node in group_nodes}
@@ -89,12 +89,12 @@ def analyze_group(nodes, indices) -> GroupInfo:
                     f"node {_node_label(node)} output is consumed by another node in group"
                 )
             raise ValueError(
-                f"node {_node_label(node)} output is consumed outside the group; v1 requires linear chain"
+                f"node {_node_label(node)} output is consumed outside the group; rewrite requires a linear chain"
             )
 
     exit_tensor = group_nodes[-1].outputs[0]
     return GroupInfo(
-        indices=indices,
+        node_range=node_range,
         nodes=group_nodes,
         entry_tensor=entry_tensor,
         exit_tensor=exit_tensor,
