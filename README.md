@@ -21,8 +21,6 @@ pip install -r requirements.txt
 
 ## Quick start
 
-Assuming dependencies are installed (see [Requirements](#requirements)):
-
 1. Create a split config JSON file (see [Configuration format](#configuration-format)).
 2. Run the rewrite command.
 
