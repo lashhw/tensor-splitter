@@ -26,9 +26,9 @@ pip install -r requirements.txt
 
 ```bash
 python -m tensor_splitter.cli \
-  --model model.onnx \
-  --config split_config.json \
-  --output split_model.onnx \
+  --model input.onnx \
+  --config config.json \
+  --output output.onnx \
   [--verify]
 ```
 
