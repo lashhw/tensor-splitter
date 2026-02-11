@@ -22,23 +22,14 @@ pip install -r requirements.txt
 ## Quick start
 
 1. Prepare a JSON config file (see [Configuration format](#configuration-format)).
-2. Run the rewrite:
+2. Run the rewrite (add `--verify` to also run numeric verification against the original model):
 
 ```bash
-python3 -m tensor_splitter.cli \
-  --model model.onnx \
-  --config split_config.json \
-  --output split_model.onnx
-```
-
-3. (Optional) Run numeric verification against the original model:
-
-```bash
-python3 -m tensor_splitter.cli \
+python -m tensor_splitter.cli \
   --model model.onnx \
   --config split_config.json \
   --output split_model.onnx \
-  --verify
+  [--verify]
 ```
 
 ## CLI reference
