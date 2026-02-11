@@ -25,11 +25,12 @@ Assuming dependencies are installed (see [Requirements](#requirements)):
 
 1. Create a split config JSON file (see [Configuration format](#configuration-format)).
 2. Run the rewrite command.
-3. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
 
-```bash
-python -m tensor_splitter.cli model.onnx split_config.json model_tiled.onnx
-```
+   ```bash
+   python -m tensor_splitter.cli input.onnx config.json output.onnx
+   ```
+
+3. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
 
 ## CLI reference
 
