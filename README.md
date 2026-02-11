@@ -51,8 +51,7 @@ python -m tensor_splitter.cli INPUT CONFIG OUTPUT [--verify | --no-verify]
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--verify` | Enabled | Run ONNX Runtime numerical comparison after rewriting. |
-| `--no-verify` | Disabled | Skip post-rewrite numerical comparison. |
+| `--verify` / `--no-verify` | Enabled | Enable or disable ONNX Runtime numerical comparison after rewriting. |
 
 ## Configuration format
 
