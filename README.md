@@ -1,31 +1,20 @@
-# ONNX Tensor Splitter (Height Tiling)
+# ONNX Tensor Splitter
 
-`tensor-splitter` rewrites ONNX models so selected node ranges run as **height tiles** (NCHW axis `2`) instead of full-height tensors.  
-It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
+`tensor-splitter` rewrites ONNX models so selected node ranges run as tiles instead of full tensors. It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
 
 ## What this tool does
 
 Given an input model and a split plan, the tool:
 
-- Splits the chain input tensor into `N` height tiles.
+- Splits the chain input tensor into `N` tiles.
 - Rewrites supported operators to run per tile.
 - Inserts/adjusts halo overlap for convolution correctness.
 - Reassembles the tiled results back into the original tensor layout.
-- Stores the execution schedule in model metadata (`tensor_split_schedule`).
 
 ## Requirements
 
-- Python 3.9+
-- `onnx`
-- `onnxruntime` (only required for `--verify`)
-- `onnx-graphsurgeon`
-
-Install dependencies:
-
 ```bash
 pip install -r requirements.txt
-# plus graphsurgeon if not already available in your environment
-pip install onnx-graphsurgeon
 ```
 
 ## Quick start
@@ -94,23 +83,6 @@ Each group contains:
 - `schedule` must include every `(node_index, split_id)` in the group exactly once.
 - Group ranges must be disjoint and non-touching.
 
-## Supported operators (v1)
-
-- `Conv`
-- Unary: `Relu`, `Sigmoid`, `Tanh`, `Identity`
-- Unary with constant inputs: `Clip`, `BatchNormalization`
-- Binary: `Add`, `Mul`, `Sub`, `Div` (external non-constant inputs are not supported)
-
-## Current constraints
-
-- Split axis is fixed to Height (NCHW axis `2`).
-- Each group must be a **linear chain**:
-  - single data input into first node,
-  - each node consumes the previous node output as its only data input,
-  - single exit tensor (output of node `end`).
-- Height must be statically known after shape inference.
-- `Conv` with `auto_pad` is not supported.
-
 ## Testing
 
 Run the test suite:
@@ -118,9 +90,3 @@ Run the test suite:
 ```bash
 pytest -q
 ```
-
-## Troubleshooting
-
-- **Config parse error**: ensure config is valid JSON (not Python literal syntax).
-- **Schedule mismatch error**: verify every pair `(node_index, split_id)` appears exactly once.
-- **Verification failure**: rerun with `--verbose`, then inspect unsupported patterns in selected node ranges.
