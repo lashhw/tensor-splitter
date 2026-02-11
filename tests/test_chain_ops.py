@@ -34,9 +34,9 @@ def test_chain_rewrite_matches():
     model = _make_chain_model()
     groups = [
         GroupConfig(
-            indices=(0, 2),
-            splits=2,
-            schedule=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
+            node_range=(0, 2),
+            tile_count=2,
+            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
         )
     ]
     rewritten = rewrite_model(model, groups)

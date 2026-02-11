@@ -24,7 +24,7 @@ def _make_conv_model():
 
 def test_small_conv_rewrite_matches():
     model = _make_conv_model()
-    groups = [GroupConfig(indices=(0, 0), splits=2, schedule=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
     rewritten = rewrite_model(model, groups)
 
     import onnxruntime as ort

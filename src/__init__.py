@@ -1,4 +1,4 @@
-"""Public package surface for tensor-splitter."""
+"""Public package surface for this tool."""
 
 from .config import GroupConfig, parse_config
 from .rewrite import rewrite_model

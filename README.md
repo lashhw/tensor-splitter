@@ -1,12 +1,12 @@
 # ONNX Tensor Splitter
 
-`tensor-splitter` rewrites ONNX models so selected node ranges run as tiles instead of full tensors. It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
+This tool rewrites ONNX models so selected node ranges run as tiles instead of full tensors. It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
 
 ## What this tool does
 
 Given an input model and a split plan, the tool:
 
-- Splits the chain input tensor into `N` tiles.
+- Splits the chain input tensor into multiple tiles.
 - Rewrites supported operators to run per tile.
 - Inserts/adjusts halo overlap for convolution correctness.
 - Reassembles the tiled results back into the original tensor layout.
@@ -54,32 +54,32 @@ The config must be a **JSON list** of group entries.
 
 Each group contains:
 
-- `indices`: `[start_node_index, end_node_index]` (inclusive)
-- `splits`: number of height tiles
-- `schedule`: list of `[node_index, split_id]` pairs
+- `node_range`: `[start_node_index, end_node_index]` (inclusive)
+- `tile_count`: number of tiles
+- `execution_order`: list of `[node_index, split_id]` pairs
 
 ### Example
 
 ```json
 [
   {
-    "indices": [4, 6],
-    "splits": 2,
-    "schedule": [[4, 0], [4, 1], [5, 0], [5, 1], [6, 0], [6, 1]]
+    "node_range": [4, 6],
+    "tile_count": 2,
+    "execution_order": [[4, 0], [4, 1], [5, 0], [5, 1], [6, 0], [6, 1]]
   },
   {
-    "indices": [10, 11],
-    "splits": 3,
-    "schedule": [[10, 0], [11, 0], [10, 1], [11, 1], [10, 2], [11, 2]]
+    "node_range": [10, 11],
+    "tile_count": 3,
+    "execution_order": [[10, 0], [11, 0], [10, 1], [11, 1], [10, 2], [11, 2]]
   }
 ]
 ```
 
 ### Validation rules
 
-- `indices` must be non-negative and `start <= end`.
-- `splits` must be `> 0`.
-- `schedule` must include every `(node_index, split_id)` in the group exactly once.
+- `node_range` must be non-negative and `start <= end`.
+- `tile_count` must be `> 0`.
+- `execution_order` must include every `(node_index, split_id)` in the group exactly once.
 - Group ranges must be disjoint.
 
 ## Testing

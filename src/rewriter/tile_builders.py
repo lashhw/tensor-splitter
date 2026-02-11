@@ -315,7 +315,7 @@ def _build_group_tiles(
     for node in group_info.nodes:
         _ensure_supported_op(node)
 
-    tiles, ranges = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.splits, nodes)
+    tiles, ranges = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.tile_count, nodes)
 
     for node in group_info.nodes:
         orig_index = node_index_map[id(node)]
@@ -326,7 +326,7 @@ def _build_group_tiles(
             orig_index,
             tiles,
             ranges,
-            group_cfg.splits,
+            group_cfg.tile_count,
             nodes,
             main_idx,
         )

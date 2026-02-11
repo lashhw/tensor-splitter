@@ -29,7 +29,7 @@ def rewrite_group(
         nodes=nodes,
     )
 
-    priority = _apply_schedule_priority(blocks, group_cfg.schedule)
+    priority = _apply_schedule_priority(blocks, group_cfg.execution_order)
     ordered_nodes = _toposort_with_priority(nodes, priority)
     return ordered_nodes, concat_out
 
@@ -42,9 +42,9 @@ def rewrite_model(model, groups):
     node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope.from_existing(graph.tensors().keys())
 
-    groups_sorted = sorted(groups, key=lambda g: g.indices[0])
+    groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     for group_cfg in groups_sorted:
-        group_info = analyze_group(orig_nodes, group_cfg.indices)
+        group_info = analyze_group(orig_nodes, group_cfg.node_range)
         new_nodes, concat_out = rewrite_group(
             group_info,
             group_cfg,
@@ -58,8 +58,8 @@ def rewrite_model(model, groups):
             node.inputs = []
             node.outputs = []
 
-        node_a = orig_nodes[group_cfg.indices[0]]
-        node_b = orig_nodes[group_cfg.indices[1]]
+        node_a = orig_nodes[group_cfg.node_range[0]]
+        node_b = orig_nodes[group_cfg.node_range[1]]
         start_pos = graph.nodes.index(node_a)
         end_pos = graph.nodes.index(node_b)
         if end_pos < start_pos:
