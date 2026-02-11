@@ -36,22 +36,17 @@ python -m tensor_splitter.cli model.onnx split_config.json model_tiled.onnx
 ### Usage
 
 ```bash
-python -m tensor_splitter.cli INPUT CONFIG OUTPUT [--verify | --no-verify]
+python -m tensor_splitter.cli INPUT CONFIG OUTPUT [--no-verify]
 ```
 
-### Positional arguments
+### Arguments
 
 | Name | Description |
 | --- | --- |
 | `INPUT` | Path to input ONNX model. |
 | `CONFIG` | Path to split configuration JSON. |
 | `OUTPUT` | Path where the rewritten ONNX model will be saved. |
-
-### Options
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `--verify` / `--no-verify` | Enabled | Enable or disable ONNX Runtime numerical comparison after rewriting. |
+| `--no-verify` | Disable ONNX Runtime numerical comparison. |
 
 ## Configuration format
 
