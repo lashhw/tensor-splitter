@@ -21,24 +21,38 @@ pip install -r requirements.txt
 
 ## Quick start
 
-1. Prepare a JSON config file (see [Configuration format](#configuration-format)).
-2. Run the rewrite.
+Assuming dependencies are installed (see [Requirements](#requirements)):
+
+1. Create a split config JSON file (see [Configuration format](#configuration-format)).
+2. Run the rewrite command.
+3. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
 
 ```bash
-python -m tensor_splitter.cli \
-  --model input.onnx \
-  --config config.json \
-  --output output.onnx
+python -m tensor_splitter.cli model.onnx split_config.json model_tiled.onnx
 ```
 
 ## CLI reference
 
-| Argument | Description | Required | Default |
-| --- | --- | --- | --- |
-| `--model` | Path to input ONNX model | Yes | N/A |
-| `--config` | Path to split configuration JSON | Yes | N/A |
-| `--output` | Path to output ONNX model | Yes | N/A |
-| `--verify` / `--no-verify` | Enable or disable ONNX Runtime output comparison | No | Enabled |
+### Usage
+
+```bash
+python -m tensor_splitter.cli INPUT CONFIG OUTPUT [--verify | --no-verify]
+```
+
+### Positional arguments
+
+| Name | Description |
+| --- | --- |
+| `INPUT` | Path to input ONNX model. |
+| `CONFIG` | Path to split configuration JSON. |
+| `OUTPUT` | Path where the rewritten ONNX model will be saved. |
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--verify` | Enabled | Run ONNX Runtime numerical comparison after rewriting. |
+| `--no-verify` | Disabled | Skip post-rewrite numerical comparison. |
 
 ## Configuration format
 

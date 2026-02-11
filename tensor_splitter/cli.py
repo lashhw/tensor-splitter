@@ -9,9 +9,9 @@ from tensor_splitter.verification import verify_models
 
 def _parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", required=True, help="Path to input ONNX model")
-    parser.add_argument("--config", required=True, help="Path to config (json)")
-    parser.add_argument("--output", required=True, help="Path to output ONNX model")
+    parser.add_argument("input", help="Path to input ONNX model")
+    parser.add_argument("config", help="Path to split configuration JSON")
+    parser.add_argument("output", help="Path to output ONNX model")
     parser.add_argument(
         "--verify",
         action=argparse.BooleanOptionalAction,
@@ -26,7 +26,7 @@ def main():
 
     groups = parse_config(args.config)
 
-    model = onnx.load(args.model)
+    model = onnx.load(args.input)
 
     rewritten = rewrite_model(model, groups)
 
