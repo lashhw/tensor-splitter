@@ -12,7 +12,12 @@ def _parse_args():
     parser.add_argument("--model", required=True, help="Path to input ONNX model")
     parser.add_argument("--config", required=True, help="Path to config (json)")
     parser.add_argument("--output", required=True, help="Path to output ONNX model")
-    parser.add_argument("--verify", action="store_true", help="Run onnxruntime verification")
+    parser.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run onnxruntime verification (default: enabled)",
+    )
     return parser.parse_args()
 
 
