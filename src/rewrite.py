@@ -274,6 +274,19 @@ def _toposort_with_priority(nodes, priority):
     return result
 
 
+def _ensure_toposorted(nodes):
+    index = {node: idx for idx, node in enumerate(nodes)}
+    for node in nodes:
+        node_idx = index[node]
+        for tensor in node.inputs:
+            for producer in tensor.inputs:
+                producer_idx = index.get(producer)
+                if producer_idx is None:
+                    continue
+                if producer_idx > node_idx:
+                    raise ValueError("graph nodes are not topologically sorted")
+
+
 def _replace_tensor_consumers(graph, old, new):
     for consumer in list(old.outputs):
         for idx, inp in enumerate(consumer.inputs):
@@ -585,6 +598,7 @@ def rewrite_model(
     model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
+    _ensure_toposorted(orig_nodes)
     node_index_map = {node: idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope(graph.tensors().keys())
 

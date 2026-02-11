@@ -14,8 +14,8 @@ def _is_constant(tensor):
     return isinstance(tensor, gs.Constant)
 
 
-def index_nodes(nodes):
-    return {node: idx for idx, node in enumerate(nodes)}
+def _node_label(node):
+    return node.name or node.op
 
 
 def analyze_group(nodes, indices):
@@ -27,24 +27,18 @@ def analyze_group(nodes, indices):
     group_set = set(group_nodes)
     main_input_index = {}
 
-    # Validate single-output constraint and linear chain.
+    # Validate single-output constraint and linear chain
     for node in group_nodes:
         if len(node.outputs) != 1:
             raise ValueError(
-                f"node {node.name or node.op} must have a single output for v1 tiling"
+                f"node {_node_label(node)} must have a single output"
             )
 
     first = group_nodes[0]
-    var_inputs = [inp for inp in first.inputs if not _is_constant(inp)]
     entry_candidates = []
     for idx, inp in enumerate(first.inputs):
         if _is_constant(inp):
             continue
-        producers = [p for p in inp.inputs if p in group_set]
-        if producers:
-            raise ValueError(
-                f"group entry node has input produced within group: {inp.name}"
-            )
         entry_candidates.append((idx, inp))
 
     if len(entry_candidates) != 1:
@@ -54,38 +48,36 @@ def analyze_group(nodes, indices):
     main_input_index[first] = entry_candidates[0][0]
     entry_tensor = entry_candidates[0][1]
 
-    # Validate remaining nodes.
+    # Validate remaining nodes
     for prev, node in zip(group_nodes[:-1], group_nodes[1:]):
-        var_inputs = [inp for inp in node.inputs if not _is_constant(inp)]
-        from_group = []
+        main_idx = None
         for idx, inp in enumerate(node.inputs):
             if _is_constant(inp):
                 continue
             producers = [p for p in inp.inputs if p in group_set]
             if producers:
-                from_group.append((idx, inp, producers))
-
-        if len(from_group) != 1:
-            raise ValueError(
-                f"node {node.name or node.op} must have exactly one data input from within group"
-            )
-        idx, main_inp, producers = from_group[0]
-        if prev not in producers:
-            raise ValueError(
-                f"node {node.name or node.op} data input must come from previous node in group"
-            )
-        main_input_index[node] = idx
-
-        for inp in var_inputs:
-            if inp is main_inp:
-                continue
-            # Disallow external variable inputs for v1.
-            if not _is_constant(inp):
+                if main_idx is not None:
+                    raise ValueError(
+                        f"node {_node_label(node)} must have exactly one data input from within group"
+                    )
+                if prev not in producers:
+                    raise ValueError(
+                        f"node {_node_label(node)} data input must come from previous node in group"
+                    )
+                main_idx = idx
+            else:
+                # Disallow external variable inputs
                 raise ValueError(
-                    f"node {node.name or node.op} has unsupported external variable input {inp.name}"
+                    f"node {_node_label(node)} has unsupported external variable input {inp.name}"
                 )
 
-    # Validate intermediate outputs are only consumed by next node.
+        if main_idx is None:
+            raise ValueError(
+                f"node {_node_label(node)} must have exactly one data input from within group"
+            )
+        main_input_index[node] = main_idx
+
+    # Validate intermediate outputs are only consumed by next node
     for node, nxt in zip(group_nodes[:-1], group_nodes[1:]):
         out_tensor = node.outputs[0]
         for consumer in out_tensor.outputs:
@@ -93,10 +85,10 @@ def analyze_group(nodes, indices):
                 continue
             if consumer in group_set:
                 raise ValueError(
-                    f"node {node.name or node.op} output is consumed by another node in group"
+                    f"node {_node_label(node)} output is consumed by another node in group"
                 )
             raise ValueError(
-                f"node {node.name or node.op} output is consumed outside the group; v1 requires linear chain"
+                f"node {_node_label(node)} output is consumed outside the group; v1 requires linear chain"
             )
 
     exit_tensor = group_nodes[-1].outputs[0]
