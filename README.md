@@ -11,19 +11,6 @@ Given an input model and a split plan, the tool:
 - Inserts/adjusts halo overlap for convolution correctness.
 - Reassembles the tiled results back into the original tensor layout.
 
-## Project layout
-
-- `split_onnx.py`: CLI entry point.
-- `src/config.py`: config parsing and validation.
-- `src/tiling.py`: tensor-range and convolution halo math.
-- `src/utils.py`: group analysis and graph constraints.
-- `src/rewrite.py`: compatibility shim exporting `rewrite_model`.
-- `src/rewriter/rewriter.py`: high-level model rewrite pipeline.
-- `src/rewriter/tile_builders.py`: op-specific tiled graph construction.
-- `src/rewriter/tensor_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
-- `src/rewriter/graph_utils.py`: graph ordering and consumer rewiring utilities.
-- `src/rewriter/types.py`: small shared data structures/constants.
-
 ## Requirements
 
 ```bash
@@ -102,3 +89,16 @@ Run the test suite:
 ```bash
 pytest -q
 ```
+
+## Project layout
+
+- `split_onnx.py`: CLI entry point.
+- `src/config.py`: config parsing and validation.
+- `src/tiling.py`: tensor-range and convolution halo math.
+- `src/utils.py`: group analysis and graph constraints.
+- `src/rewrite.py`: compatibility shim exporting `rewrite_model`.
+- `src/rewriter/rewriter.py`: high-level model rewrite pipeline.
+- `src/rewriter/tile_builders.py`: op-specific tiled graph construction.
+- `src/rewriter/tensor_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
+- `src/rewriter/graph_utils.py`: graph ordering and consumer rewiring utilities.
+- `src/rewriter/types.py`: small shared data structures/constants.
