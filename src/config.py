@@ -1,11 +1,16 @@
 import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable
 
 
+@dataclass(frozen=True)
 class GroupConfig:
-    def __init__(self, indices, splits, schedule):
-        self.indices = indices
-        self.splits = splits
-        self.schedule = schedule
+    """Validated configuration for a contiguous node range rewrite."""
+
+    indices: tuple[int, int]
+    splits: int
+    schedule: list[tuple[int, int]]
 
 
 def _to_tuple_pair(value, field):
@@ -20,7 +25,7 @@ def _to_tuple_pair(value, field):
 
 
 def _normalize_schedule(schedule):
-    out = []
+    out: list[tuple[int, int]] = []
     for entry in schedule:
         out.append(_to_tuple_pair(entry, "schedule entry"))
     return out
@@ -50,8 +55,19 @@ def _validate_group(group):
         )
 
 
+def _validate_non_overlapping_groups(groups: Iterable[GroupConfig]) -> None:
+    ranges_sorted = sorted(group.indices for group in groups)
+    for (a0, b0), (a1, _b1) in zip(ranges_sorted, ranges_sorted[1:]):
+        if a1 <= b0:
+            raise ValueError(
+                f"group ranges overlap or touch: {(a0, b0)} and {(a1, _b1)}"
+            )
+
+
 def parse_config(path):
-    with open(path, "r") as f:
+    """Parse and validate a JSON split configuration file."""
+    config_path = Path(path)
+    with config_path.open("r", encoding="utf-8") as f:
         raw = json.load(f)
     if not isinstance(raw, list):
         raise ValueError("config must be a list of group entries")
@@ -71,14 +87,5 @@ def parse_config(path):
         _validate_group(group)
         groups.append(group)
 
-    ranges = []
-    for group in groups:
-        ranges.append(group.indices)
-    ranges_sorted = sorted(ranges)
-    for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
-        if a1 <= b0:
-            raise ValueError(
-                f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
-            )
-
+    _validate_non_overlapping_groups(groups)
     return groups

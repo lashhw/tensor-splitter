@@ -28,9 +28,9 @@ class TileBlock:
         self.tile_id = tile_id
         self.nodes = nodes
 
-    def assign_priority(self, priority, order):
+    def assign_priority(self, priority_by_id, order):
         for node in self.nodes:
-            priority[node] = order
+            priority_by_id[id(node)] = order
 
 
 UNARY_OPS = {
@@ -240,34 +240,43 @@ def _conv_attrs_with_height_pad(node, pads):
     return attrs
 
 
-def _toposort_with_priority(nodes, priority):
-    node_set = set(nodes)
-    adj = {node: [] for node in nodes}
-    indeg = {node: 0 for node in nodes}
+def _toposort_with_priority(nodes, priority_by_id):
+    node_ids = {id(node) for node in nodes}
+    adj = {id(node): [] for node in nodes}
+    indeg = {id(node): 0 for node in nodes}
 
     for node in nodes:
+        node_id = id(node)
         for inp in node.inputs:
             for prod in inp.inputs:
-                if prod in node_set:
-                    adj[prod].append(node)
-                    indeg[node] += 1
+                prod_id = id(prod)
+                if prod_id in node_ids:
+                    adj[prod_id].append(node)
+                    indeg[node_id] += 1
 
     import heapq
 
-    order = {node: idx for idx, node in enumerate(nodes)}
+    order = {id(node): idx for idx, node in enumerate(nodes)}
     heap = []
-    for node, deg in indeg.items():
-        if deg == 0:
-            heapq.heappush(heap, (priority.get(node, 10**9), order[node], node))
+    for node in nodes:
+        node_id = id(node)
+        if indeg[node_id] == 0:
+            heapq.heappush(
+                heap, (priority_by_id.get(node_id, 10**9), order[node_id], node)
+            )
 
     result = []
     while heap:
         _, _, node = heapq.heappop(heap)
+        node_id = id(node)
         result.append(node)
-        for nxt in adj[node]:
-            indeg[nxt] -= 1
-            if indeg[nxt] == 0:
-                heapq.heappush(heap, (priority.get(nxt, 10**9), order[nxt], nxt))
+        for nxt in adj[node_id]:
+            nxt_id = id(nxt)
+            indeg[nxt_id] -= 1
+            if indeg[nxt_id] == 0:
+                heapq.heappush(
+                    heap, (priority_by_id.get(nxt_id, 10**9), order[nxt_id], nxt)
+                )
 
     if len(result) != len(nodes):
         raise RuntimeError("cycle detected while ordering rewritten nodes")
@@ -275,12 +284,12 @@ def _toposort_with_priority(nodes, priority):
 
 
 def _ensure_toposorted(nodes):
-    index = {node: idx for idx, node in enumerate(nodes)}
+    index_by_id = {id(node): idx for idx, node in enumerate(nodes)}
     for node in nodes:
-        node_idx = index[node]
+        node_idx = index_by_id[id(node)]
         for tensor in node.inputs:
             for producer in tensor.inputs:
-                producer_idx = index.get(producer)
+                producer_idx = index_by_id.get(id(producer))
                 if producer_idx is None:
                     continue
                 if producer_idx > node_idx:
@@ -522,13 +531,13 @@ def _apply_schedule_priority(
     schedule,
 ):
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    priority = {}
+    priority_by_id = {}
     for block in blocks:
         order = schedule_pos.get((block.orig_index, block.tile_id))
         if order is None:
             continue
-        block.assign_priority(priority, order)
-    return priority
+        block.assign_priority(priority_by_id, order)
+    return priority_by_id
 
 
 def rewrite_group(
@@ -547,8 +556,8 @@ def rewrite_group(
     tiles, ranges = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.splits, nodes)
 
     for node in group_info.nodes:
-        orig_index = node_index_map[node]
-        main_idx = group_info.main_input_index[node]
+        orig_index = node_index_map[id(node)]
+        main_idx = group_info.main_input_index[id(node)]
 
         if node.op == "Conv":
             tiles, ranges, conv_blocks = _build_conv_tiles(
@@ -599,7 +608,7 @@ def rewrite_model(
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
     _ensure_toposorted(orig_nodes)
-    node_index_map = {node: idx for idx, node in enumerate(orig_nodes)}
+    node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope(graph.tensors().keys())
 
     groups_sorted = sorted(groups, key=lambda g: g.indices[0])
