@@ -32,10 +32,6 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
     group_node_ids = {id(node) for node in group_nodes}
     main_input_index = {}
 
-    for node in group_nodes:
-        if len(node.outputs) != 1:
-            raise ValueError(f"node {_node_label(node)} must have a single output")
-
     first = group_nodes[0]
     entry_candidates = []
     for idx, inp in enumerate(first.inputs):
@@ -89,17 +85,18 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
             )
         main_input_index[id(node)] = main_idx
 
+    for node in group_nodes:
+        if len(node.outputs) != 1:
+            raise ValueError(f"node {_node_label(node)} must have a single output")
+
     for node, nxt in zip(group_nodes[:-1], group_nodes[1:]):
         out_tensor = node.outputs[0]
         for consumer in out_tensor.outputs:
             if consumer is nxt:
                 continue
-            if id(consumer) in group_node_ids:
-                raise ValueError(
-                    f"node {_node_label(node)} output is consumed by another node in group"
-                )
             raise ValueError(
-                f"node {_node_label(node)} output is consumed outside the group; rewrite requires a linear chain"
+                f"node {_node_label(node)} output has extra consumer {_node_label(consumer)}; "
+                "rewrite requires a linear chain where each node feeds only the next node"
             )
 
     exit_tensor = group_nodes[-1].outputs[0]
