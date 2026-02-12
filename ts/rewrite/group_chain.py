@@ -23,13 +23,22 @@ def _node_label(node: gs.Node) -> str:
     return node.name or node.op
 
 
+def _producers_in_group(tensor: gs.Tensor, group_node_ids: set[int]) -> list[gs.Node]:
+    return [producer for producer in tensor.inputs if id(producer) in group_node_ids]
+
+
+def _has_previous_producer(producers: Sequence[gs.Node], previous: gs.Node) -> bool:
+    previous_id = id(previous)
+    return any(id(producer) == previous_id for producer in producers)
+
+
 def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range
     if a < 0 or b >= len(nodes) or b < a:
         raise ValueError(f"invalid group node_range {node_range} for graph with {len(nodes)} nodes")
 
     group_nodes = nodes[a : b + 1]
-    group_set = {id(node) for node in group_nodes}
+    group_node_ids = {id(node) for node in group_nodes}
     main_input_index = {}
 
     for node in group_nodes:
@@ -57,21 +66,23 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
             if _is_constant(inp):
                 continue
 
-            producers = [p for p in inp.inputs if id(p) in group_set]
-            if producers:
-                if main_idx is not None:
-                    raise ValueError(
-                        f"node {_node_label(node)} must have exactly one data input from within group"
-                    )
-                if all(id(prod) != id(prev) for prod in producers):
-                    raise ValueError(
-                        f"node {_node_label(node)} data input must come from previous node in group"
-                    )
-                main_idx = idx
-            else:
+            group_producers = _producers_in_group(inp, group_node_ids)
+            if not group_producers:
                 raise ValueError(
                     f"node {_node_label(node)} has unsupported external variable input {inp.name}"
                 )
+
+            if main_idx is not None:
+                raise ValueError(
+                    f"node {_node_label(node)} must have exactly one data input from within group"
+                )
+
+            if not _has_previous_producer(group_producers, prev):
+                raise ValueError(
+                    f"node {_node_label(node)} data input must come from previous node in group"
+                )
+
+            main_idx = idx
 
         if main_idx is None:
             raise ValueError(
@@ -84,7 +95,7 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
         for consumer in out_tensor.outputs:
             if consumer is nxt:
                 continue
-            if id(consumer) in group_set:
+            if id(consumer) in group_node_ids:
                 raise ValueError(
                     f"node {_node_label(node)} output is consumed by another node in group"
                 )
