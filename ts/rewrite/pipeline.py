@@ -8,8 +8,8 @@ import onnx_graphsurgeon as gs
 from ..config import GroupConfig
 from .group_chain import GroupInfo, _analyze_group
 from .naming import NameScope
-from .op_rewriters import _apply_schedule_priority, _build_group_output, _build_group_tiles
-from .scheduling import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
+from .op_rewriters import _build_execution_order_map, _build_group_output, _build_group_tiles
+from .scheduling import _ensure_toposorted, _order_by_execution_order, _replace_tensor_consumers
 
 
 def _rewrite_group(
@@ -32,8 +32,8 @@ def _rewrite_group(
         nodes=nodes,
     )
 
-    priority = _apply_schedule_priority(blocks, group_cfg.execution_order)
-    ordered_nodes = _toposort_with_priority(nodes, priority)
+    order_map = _build_execution_order_map(blocks, group_cfg.execution_order)
+    ordered_nodes = _order_by_execution_order(nodes, order_map)
     return ordered_nodes, concat_out
 
 

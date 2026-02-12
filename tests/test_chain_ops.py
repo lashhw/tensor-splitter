@@ -1,6 +1,7 @@
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import pytest
 
 from ts.config import GroupConfig
 from ts.rewrite import rewrite_model
@@ -51,3 +52,17 @@ def test_chain_rewrite_matches():
     out_new = sess_new.run(None, {"input": inp})[0]
 
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
+def test_chain_rewrite_rejects_dependency_violating_execution_order():
+    model = _make_chain_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 2),
+            tile_count=2,
+            execution_order=[(1, 0), (0, 0), (2, 0), (1, 1), (0, 1), (2, 1)],
+        )
+    ]
+
+    with pytest.raises(ValueError, match="execution_order is not topologically valid"):
+        rewrite_model(model, groups)

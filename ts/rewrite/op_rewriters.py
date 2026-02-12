@@ -257,18 +257,31 @@ def _build_entry_tiles(
     return tiles, ranges
 
 
-def _apply_schedule_priority(
+def _build_execution_order_map(
     blocks: Sequence[TileBlock],
     schedule: Sequence[Tuple[int, int]],
 ) -> Dict[int, int]:
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    priority = {}
+    block_pairs = {(block.orig_index, block.tile_id) for block in blocks}
+    schedule_pairs = set(schedule_pos)
+    if block_pairs != schedule_pairs:
+        missing = sorted(block_pairs - schedule_pairs)
+        extra = sorted(schedule_pairs - block_pairs)
+        raise ValueError(
+            "execution_order does not match rewritten block set. "
+            f"Missing: {missing}, Extra: {extra}"
+        )
+
+    order_map = {}
     for block in blocks:
         order = schedule_pos.get((block.orig_index, block.tile_id))
         if order is None:
-            continue
-        block.assign_priority(priority, order)
-    return priority
+            raise ValueError(
+                "execution_order is missing entry for rewritten block "
+                f"{(block.orig_index, block.tile_id)}"
+            )
+        block.assign_order(order_map, order)
+    return order_map
 
 
 def _build_tiled_op(

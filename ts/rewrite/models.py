@@ -14,9 +14,9 @@ class TileBlock:
     tile_id: int
     nodes: List[gs.Node] = field(default_factory=list)
 
-    def assign_priority(self, priority: Dict[int, int], order: int) -> None:
+    def assign_order(self, order_map: Dict[int, int], order: int) -> None:
         for node in self.nodes:
-            priority[id(node)] = order
+            order_map[id(node)] = order
 
 
 UNARY_OPS = {
