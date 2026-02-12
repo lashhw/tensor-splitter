@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 
 import onnx
@@ -7,7 +9,7 @@ from ts.rewrite import rewrite_model
 from ts.verify import verify_models
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", help="Path to input ONNX model")
     parser.add_argument("config", help="Path to split configuration JSON")
@@ -21,7 +23,7 @@ def _parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
     args = _parse_args()
     groups = parse_config(args.config)
     model = onnx.load(args.input)

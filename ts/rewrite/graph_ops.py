@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import onnx_graphsurgeon as gs
@@ -8,13 +8,13 @@ import onnx_graphsurgeon as gs
 from .naming import NameScope
 
 
-def _get_attr(node: gs.Node, name: str, default=None):
+def _get_attr(node: gs.Node, name: str, default: Any = None) -> Any:
     if node.attrs is None:
         return default
     return node.attrs.get(name, default)
 
 
-def _as_int_list(value, length: Optional[int] = None) -> Optional[List[int]]:
+def _as_int_list(value: Any, length: Optional[int] = None) -> Optional[List[int]]:
     if value is None:
         return None
     if isinstance(value, np.ndarray):
@@ -28,19 +28,19 @@ def _as_int_list(value, length: Optional[int] = None) -> Optional[List[int]]:
     return out
 
 
-def _require_static_dim(dim, name: str) -> int:
+def _require_static_dim(dim: Any, name: str) -> int:
     if dim is None or isinstance(dim, str):
         raise RuntimeError(f"{name} must be static; got {dim}")
     return int(dim)
 
 
-def _tensor_rank(tensor) -> int:
+def _tensor_rank(tensor: gs.Tensor) -> int:
     if hasattr(tensor, "shape") and tensor.shape is not None:
         return len(tensor.shape)
     return 0
 
 
-def _tensor_height(tensor, axis: int = 2) -> int:
+def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
     if not hasattr(tensor, "shape") or tensor.shape is None:
         raise RuntimeError(f"tensor {tensor.name} has no static shape information")
     if len(tensor.shape) <= axis:
@@ -48,7 +48,11 @@ def _tensor_height(tensor, axis: int = 2) -> int:
     return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
 
 
-def _clone_shape_with_height(shape: Optional[Sequence[int]], axis: int, height: int):
+def _clone_shape_with_height(
+    shape: Optional[Sequence[Any]],
+    axis: int,
+    height: int,
+) -> Optional[List[Any]]:
     if shape is None:
         return None
     if len(shape) <= axis:
@@ -64,12 +68,12 @@ def _make_constant(name_scope: NameScope, values: np.ndarray) -> gs.Constant:
 
 def _make_slice(
     name_scope: NameScope,
-    data,
+    data: gs.Tensor,
     start: int,
     end: int,
     axis: int,
     nodes: List[gs.Node],
-):
+) -> gs.Variable:
     starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
     ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
@@ -90,11 +94,11 @@ def _make_slice(
 
 def _make_concat(
     name_scope: NameScope,
-    inputs,
+    inputs: Sequence[gs.Tensor],
     axis: int,
     nodes: List[gs.Node],
-    shape_hint=None,
-):
+    shape_hint: Optional[Sequence[Any]] = None,
+) -> gs.Variable:
     if not inputs:
         raise RuntimeError("concat inputs must be non-empty")
     out_shape = None
@@ -108,13 +112,13 @@ def _make_concat(
 
 def _slice_from_tiles(
     name_scope: NameScope,
-    tiles,
+    tiles: Sequence[gs.Variable],
     ranges: Sequence[tuple[int, int]],
     start: int,
     end: int,
     axis: int,
     nodes: List[gs.Node],
-):
+) -> gs.Variable:
     if start >= end:
         raise RuntimeError(f"invalid slice range [{start},{end})")
     pieces = []
@@ -144,11 +148,11 @@ def _slice_from_tiles(
 
 def _make_pad(
     name_scope: NameScope,
-    data,
+    data: gs.Tensor,
     pad_top: int,
     pad_bottom: int,
     nodes: List[gs.Node],
-):
+) -> gs.Variable:
     rank = _tensor_rank(data)
     if rank != 4:
         raise RuntimeError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
@@ -174,7 +178,7 @@ def _make_pad(
     return out
 
 
-def _conv_params(node: gs.Node):
+def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[int]]:
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     if auto_pad not in (None, "NOTSET", ""):
         raise RuntimeError(f"Conv auto_pad {auto_pad} is not supported")
@@ -200,7 +204,7 @@ def _conv_params(node: gs.Node):
     return kernel_shape, strides, dilations, pads
 
 
-def _conv_attrs_with_height_pad(node: gs.Node, pads: Sequence[int]):
+def _conv_attrs_with_height_pad(node: gs.Node, pads: Sequence[int]) -> Dict[str, Any]:
     attrs = dict(node.attrs) if node.attrs else {}
     attrs["pads"] = pads
     if "auto_pad" in attrs:

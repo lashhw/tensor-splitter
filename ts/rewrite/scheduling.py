@@ -3,8 +3,10 @@ from __future__ import annotations
 import heapq
 from typing import Dict, List, Sequence
 
+import onnx_graphsurgeon as gs
 
-def _toposort_with_priority(nodes: Sequence, priority: Dict[int, int]) -> List:
+
+def _toposort_with_priority(nodes: Sequence[gs.Node], priority: Dict[int, int]) -> List[gs.Node]:
     node_ids = [id(node) for node in nodes]
     node_set = set(node_ids)
     node_by_id = {id(node): node for node in nodes}
@@ -39,7 +41,7 @@ def _toposort_with_priority(nodes: Sequence, priority: Dict[int, int]) -> List:
     return result
 
 
-def _ensure_toposorted(nodes: Sequence) -> None:
+def _ensure_toposorted(nodes: Sequence[gs.Node]) -> None:
     index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
     for node_idx, node in enumerate(nodes):
         for tensor in node.inputs:
@@ -51,7 +53,7 @@ def _ensure_toposorted(nodes: Sequence) -> None:
                     raise ValueError("graph nodes are not topologically sorted")
 
 
-def _replace_tensor_consumers(graph, old, new) -> None:
+def _replace_tensor_consumers(graph: gs.Graph, old: gs.Tensor, new: gs.Tensor) -> None:
     for consumer in list(old.outputs):
         for idx, inp in enumerate(consumer.inputs):
             if inp is old:

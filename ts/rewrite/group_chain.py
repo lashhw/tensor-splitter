@@ -15,7 +15,7 @@ class GroupInfo:
     main_input_index: Dict[int, int]
 
 
-def _is_constant(tensor) -> bool:
+def _is_constant(tensor: gs.Tensor) -> bool:
     return isinstance(tensor, gs.Constant)
 
 
@@ -23,7 +23,7 @@ def _node_label(node: gs.Node) -> str:
     return node.name or node.op
 
 
-def _analyze_group(nodes, node_range) -> GroupInfo:
+def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range
     if a < 0 or b >= len(nodes) or b < a:
         raise ValueError(f"invalid group node_range {node_range} for graph with {len(nodes)} nodes")

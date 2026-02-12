@@ -16,7 +16,7 @@ class GroupConfig:
     execution_order: List[ScheduleEntry]
 
 
-def _to_tuple_pair(value, field: str) -> IndexPair:
+def _to_tuple_pair(value: object, field: str) -> IndexPair:
     if isinstance(value, list):
         value = tuple(value)
     if not isinstance(value, tuple) or len(value) != 2:
@@ -27,7 +27,7 @@ def _to_tuple_pair(value, field: str) -> IndexPair:
         raise ValueError(f"{field} must contain integers; got {value!r}") from exc
 
 
-def _normalize_execution_order(execution_order: Iterable) -> List[ScheduleEntry]:
+def _normalize_execution_order(execution_order: Iterable[object]) -> List[ScheduleEntry]:
     return [_to_tuple_pair(entry, "execution_order entry") for entry in execution_order]
 
 

@@ -1,20 +1,23 @@
 from __future__ import annotations
 
+from typing import Dict, List, Sequence, Tuple
+
 import onnx
 import onnx_graphsurgeon as gs
 
-from .group_chain import _analyze_group
+from ..config import GroupConfig
+from .group_chain import GroupInfo, _analyze_group
 from .naming import NameScope
 from .op_rewriters import _apply_schedule_priority, _build_group_output, _build_group_tiles
 from .scheduling import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
 
 
 def _rewrite_group(
-    group_info,
-    group_cfg,
-    node_index_map,
+    group_info: GroupInfo,
+    group_cfg: GroupConfig,
+    node_index_map: Dict[int, int],
     name_scope: NameScope,
-):
+) -> Tuple[List[gs.Node], gs.Variable]:
     tiles, nodes, blocks = _build_group_tiles(
         name_scope,
         group_info,
@@ -34,7 +37,7 @@ def _rewrite_group(
     return ordered_nodes, concat_out
 
 
-def rewrite_model(model, groups):
+def rewrite_model(model: onnx.ModelProto, groups: Sequence[GroupConfig]) -> onnx.ModelProto:
     model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
@@ -46,13 +49,7 @@ def rewrite_model(model, groups):
 
     for group_cfg in groups_sorted:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, concat_out = _rewrite_group(
-            group_info,
-            group_cfg,
-            node_index_map,
-            name_scope,
-        )
-
+        new_nodes, concat_out = _rewrite_group(group_info, group_cfg, node_index_map, name_scope)
         _replace_tensor_consumers(graph, group_info.exit_tensor, concat_out)
 
         for node in group_info.nodes:

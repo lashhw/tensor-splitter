@@ -1,11 +1,15 @@
+from __future__ import annotations
+
+from typing import Dict, Tuple
+
 import numpy as np
 import onnx
 import onnxruntime as ort
 
 
-def _make_input_array(name, value_info):
+def _make_input_array(name: str, value_info: onnx.ValueInfoProto) -> np.ndarray:
     tensor_type = value_info.type.tensor_type
-    shape = []
+    shape: list[int | None] = []
     for dim in tensor_type.shape.dim:
         if dim.HasField("dim_value"):
             shape.append(dim.dim_value)
@@ -20,17 +24,18 @@ def _make_input_array(name, value_info):
     if dtype is None:
         raise ValueError(f"input {name} has unsupported dtype {tensor_type.elem_type}")
 
+    static_shape = tuple(int(dim) for dim in shape)
     rng = np.random.default_rng(0)
-    data = rng.standard_normal(size=shape).astype(dtype)
+    data = rng.standard_normal(size=static_shape).astype(dtype)
     return data
 
 
-def verify_models(original, rewritten):
+def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple[bool, Dict[str, float]]:
     sess_options = ort.SessionOptions()
     sess_original = ort.InferenceSession(original.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
 
-    inputs = {}
+    inputs: Dict[str, np.ndarray] = {}
     for inp in original.graph.input:
         if any(init.name == inp.name for init in original.graph.initializer):
             continue
@@ -42,7 +47,7 @@ def verify_models(original, rewritten):
     if len(orig_outs) != len(new_outs):
         raise ValueError("output count mismatch between original and rewritten models")
 
-    diffs = {}
+    diffs: Dict[str, float] = {}
     for idx, (orig, new) in enumerate(zip(orig_outs, new_outs)):
         name = original.graph.output[idx].name
         diff = np.max(np.abs(orig - new))

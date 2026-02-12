@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
+from ..config import GroupConfig
+from .group_chain import GroupInfo
 from .tiling import _conv_input_slice_for_output, _conv_output_height, _partition_ranges
 from .graph_ops import (
     _clone_shape_with_height,
@@ -35,9 +37,9 @@ def _build_unary_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles,
+    tiles: Sequence[gs.Variable],
     nodes: List[gs.Node],
-):
+) -> Tuple[List[gs.Variable], List[TileBlock]]:
     out_tiles = []
     blocks = []
 
@@ -65,10 +67,10 @@ def _build_unary_const_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles,
+    tiles: Sequence[gs.Variable],
     nodes: List[gs.Node],
     main_input_index: int,
-):
+) -> Tuple[List[gs.Variable], List[TileBlock]]:
     out_tiles = []
     blocks = []
 
@@ -105,10 +107,10 @@ def _build_binary_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles,
+    tiles: Sequence[gs.Variable],
     nodes: List[gs.Node],
     main_input_index: int,
-):
+) -> Tuple[List[gs.Variable], List[TileBlock]]:
     out_tiles = []
     blocks = []
 
@@ -146,11 +148,11 @@ def _build_conv_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles,
+    tiles: Sequence[gs.Variable],
     ranges: Sequence[Tuple[int, int]],
     tile_count: int,
     nodes: List[gs.Node],
-):
+) -> Tuple[List[gs.Variable], List[Tuple[int, int]], List[TileBlock]]:
     kernel_shape, strides, dilations, pads = _conv_params(node)
     k_h = kernel_shape[0]
     s_h = strides[0]
@@ -242,10 +244,10 @@ def _build_conv_tiles(
 
 def _build_entry_tiles(
     name_scope: NameScope,
-    entry,
+    entry: gs.Variable,
     tile_count: int,
     nodes: List[gs.Node],
-):
+) -> Tuple[List[gs.Variable], List[Tuple[int, int]]]:
     h_in = _tensor_height(entry)
     ranges = _partition_ranges(h_in, tile_count)
     tiles = []
@@ -255,7 +257,10 @@ def _build_entry_tiles(
     return tiles, ranges
 
 
-def _apply_schedule_priority(blocks: Sequence[TileBlock], schedule: Sequence[Tuple[int, int]]) -> Dict:
+def _apply_schedule_priority(
+    blocks: Sequence[TileBlock],
+    schedule: Sequence[Tuple[int, int]],
+) -> Dict[int, int]:
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
     priority = {}
     for block in blocks:
@@ -270,12 +275,12 @@ def _build_tiled_op(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles,
-    ranges,
+    tiles: Sequence[gs.Variable],
+    ranges: Sequence[Tuple[int, int]],
     tile_count: int,
     nodes: List[gs.Node],
     main_idx: int,
-):
+) -> Tuple[List[gs.Variable], Sequence[Tuple[int, int]], List[TileBlock]]:
     if node.op == "Conv":
         return _build_conv_tiles(name_scope, node, orig_index, tiles, ranges, tile_count, nodes)
     if node.op in UNARY_OPS:
@@ -306,10 +311,10 @@ def _build_tiled_op(
 
 def _build_group_tiles(
     name_scope: NameScope,
-    group_info,
-    group_cfg,
-    node_index_map,
-):
+    group_info: GroupInfo,
+    group_cfg: GroupConfig,
+    node_index_map: Dict[int, int],
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     nodes = []
     blocks = []
 
@@ -336,5 +341,10 @@ def _build_group_tiles(
     return tiles, nodes, blocks
 
 
-def _build_group_output(name_scope: NameScope, tiles, shape_hint, nodes: List[gs.Node]):
+def _build_group_output(
+    name_scope: NameScope,
+    tiles: Sequence[gs.Variable],
+    shape_hint: Sequence[Any] | None,
+    nodes: List[gs.Node],
+) -> gs.Variable:
     return _make_concat(name_scope, tiles, axis=2, nodes=nodes, shape_hint=shape_hint)
