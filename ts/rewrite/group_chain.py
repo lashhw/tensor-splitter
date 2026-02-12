@@ -62,27 +62,35 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
 
     for prev, node in zip(group_nodes[:-1], group_nodes[1:]):
         main_idx = None
+
         for idx, inp in enumerate(node.inputs):
             if _is_constant(inp):
                 continue
 
+            producers = list(inp.inputs)
+            if len(producers) != 1:
+                raise ValueError(
+                    f"node {_node_label(node)} input {inp.name} must have exactly one producer; "
+                    f"found {len(producers)}"
+                )
+
             group_producers = _producers_in_group(inp, group_node_ids)
             if not group_producers:
                 raise ValueError(
-                    f"node {_node_label(node)} has unsupported external variable input {inp.name}"
+                    f"node {_node_label(node)} has non-constant input {inp.name} that is produced "
+                    "outside the group; all non-constant inputs must come from nodes in the group"
                 )
 
             if main_idx is not None:
                 raise ValueError(
                     f"node {_node_label(node)} must have exactly one data input from within group"
                 )
+            main_idx = idx
 
             if not _has_previous_producer(group_producers, prev):
                 raise ValueError(
                     f"node {_node_label(node)} data input must come from previous node in group"
                 )
-
-            main_idx = idx
 
         if main_idx is None:
             raise ValueError(
