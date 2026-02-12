@@ -40,9 +40,8 @@ def _toposort_with_priority(nodes: Sequence, priority: Dict[int, int]) -> List:
 
 
 def _ensure_toposorted(nodes: Sequence) -> None:
-    index = {id(node): idx for idx, node in enumerate(nodes)}
-    for node in nodes:
-        node_idx = index[id(node)]
+    index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
+    for node_idx, node in enumerate(nodes):
         for tensor in node.inputs:
             for producer in tensor.inputs:
                 producer_idx = index.get(id(producer))
