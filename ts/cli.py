@@ -4,7 +4,7 @@ import onnx
 
 from ts.config import parse_config
 from ts.rewrite import rewrite_model
-from ts.verification import verify_models
+from ts.verify import verify_models
 
 
 def _parse_args():
@@ -16,7 +16,7 @@ def _parse_args():
         "--verify",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Run onnxruntime verification (default: enabled)",
+        help="Run ONNX Runtime numerical verification (default: enabled)",
     )
     return parser.parse_args()
 

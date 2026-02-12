@@ -44,8 +44,8 @@ python -m ts.cli INPUT CONFIG OUTPUT [--no-verify]
 | --- | --- |
 | `INPUT` | Path to input ONNX model. |
 | `CONFIG` | Path to split configuration JSON. |
-| `OUTPUT` | Path where the rewritten ONNX model will be saved. |
-| `--no-verify` | Disable ONNX Runtime numerical comparison. |
+| `OUTPUT` | Path to output ONNX model. |
+| `--no-verify` | Disable ONNX Runtime numerical verification. |
 
 ## Configuration format
 
@@ -93,7 +93,7 @@ pytest -q
 
 - `ts/cli.py`: CLI entry point.
 - `ts/config.py`: config parsing and validation.
-- `ts/verification.py`: numerical output comparison with ONNX Runtime.
+- `ts/verify.py`: numerical output comparison with ONNX Runtime.
 - `ts/analysis/group_chain.py`: group analysis and graph constraints.
 - `ts/tiling/geometry.py`: tensor-range and convolution halo math.
 - `ts/rewrite/pipeline.py`: high-level model rewrite pipeline.
