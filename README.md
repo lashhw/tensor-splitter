@@ -94,8 +94,8 @@ pytest -q
 - `ts/cli.py`: CLI entry point.
 - `ts/config.py`: config parsing and validation.
 - `ts/verify.py`: numerical output comparison with ONNX Runtime.
-- `ts/analysis/group_chain.py`: group analysis and graph constraints.
-- `ts/tiling/geometry.py`: tensor-range and convolution halo math.
+- `ts/rewrite/group_chain.py`: group analysis and graph constraints.
+- `ts/rewrite/tiling.py`: tensor-range and convolution halo math.
 - `ts/rewrite/pipeline.py`: high-level model rewrite pipeline.
 - `ts/rewrite/op_rewriters.py`: op-specific tiled graph construction.
 - `ts/rewrite/graph_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).

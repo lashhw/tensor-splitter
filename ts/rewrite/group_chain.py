@@ -23,7 +23,7 @@ def _node_label(node: gs.Node) -> str:
     return node.name or node.op
 
 
-def analyze_group(nodes, node_range) -> GroupInfo:
+def _analyze_group(nodes, node_range) -> GroupInfo:
     a, b = node_range
     if a < 0 or b >= len(nodes) or b < a:
         raise ValueError(f"invalid group node_range {node_range} for graph with {len(nodes)} nodes")

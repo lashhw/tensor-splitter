@@ -4,7 +4,7 @@ from typing import Dict, List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from ..tiling.geometry import conv_input_slice_for_output, conv_output_height, partition_ranges
+from .tiling import _conv_input_slice_for_output, _conv_output_height, _partition_ranges
 from .graph_ops import (
     _clone_shape_with_height,
     _conv_attrs_with_height_pad,
@@ -165,14 +165,14 @@ def _build_conv_tiles(
         )
 
     out_height = _tensor_height(node.outputs[0])
-    out_ranges = partition_ranges(out_height, tile_count)
+    out_ranges = _partition_ranges(out_height, tile_count)
 
     out_tiles = []
     blocks = []
 
     for tile_id, (y0, y1) in enumerate(out_ranges):
         block_nodes = []
-        slice_info = conv_input_slice_for_output(
+        slice_info = _conv_input_slice_for_output(
             y0=y0,
             y1=y1,
             stride=s_h,
@@ -206,7 +206,7 @@ def _build_conv_tiles(
         conv_inputs = list(node.inputs)
         conv_inputs[0] = padded
 
-        expected = conv_output_height(
+        expected = _conv_output_height(
             slice_info.slice_end - slice_info.slice_start,
             k_h,
             s_h,
@@ -247,7 +247,7 @@ def _build_entry_tiles(
     nodes: List[gs.Node],
 ):
     h_in = _tensor_height(entry)
-    ranges = partition_ranges(h_in, tile_count)
+    ranges = _partition_ranges(h_in, tile_count)
     tiles = []
     for start, end in ranges:
         tile = _make_slice(name_scope, entry, start, end, 2, nodes)

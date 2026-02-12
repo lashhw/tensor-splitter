@@ -14,7 +14,7 @@ class ConvInputSlice:
     x1: int
 
 
-def partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
+def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
     if total is None or total <= 0:
         raise ValueError(f"total must be > 0; got {total}")
     if tile_count <= 0:
@@ -34,11 +34,11 @@ def partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
     return ranges
 
 
-def receptive_field(kernel: int, dilation: int) -> int:
+def _receptive_field(kernel: int, dilation: int) -> int:
     return (kernel - 1) * dilation + 1
 
 
-def conv_input_slice_for_output(
+def _conv_input_slice_for_output(
     y0: int,
     y1: int,
     stride: int,
@@ -50,7 +50,7 @@ def conv_input_slice_for_output(
     if y1 <= y0:
         raise ValueError(f"invalid output range [{y0},{y1})")
 
-    rf = receptive_field(kernel, dilation)
+    rf = _receptive_field(kernel, dilation)
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + rf
     slice_start = max(0, x0)
@@ -68,7 +68,7 @@ def conv_input_slice_for_output(
     )
 
 
-def conv_output_height(
+def _conv_output_height(
     h_in: int,
     kernel: int,
     stride: int,
@@ -76,5 +76,5 @@ def conv_output_height(
     pad_top: int,
     pad_bottom: int,
 ) -> int:
-    rf = receptive_field(kernel, dilation)
+    rf = _receptive_field(kernel, dilation)
     return ((h_in + pad_top + pad_bottom - rf) // stride) + 1

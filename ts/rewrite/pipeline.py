@@ -3,7 +3,7 @@ from __future__ import annotations
 import onnx
 import onnx_graphsurgeon as gs
 
-from ..analysis.group_chain import analyze_group
+from .group_chain import _analyze_group
 from .naming import NameScope
 from .op_rewriters import _apply_schedule_priority, _build_group_output, _build_group_tiles
 from .scheduling import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
@@ -39,12 +39,13 @@ def rewrite_model(model, groups):
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
     _ensure_toposorted(orig_nodes)
+
+    groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope.from_existing(graph.tensors().keys())
 
-    groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     for group_cfg in groups_sorted:
-        group_info = analyze_group(orig_nodes, group_cfg.node_range)
+        group_info = _analyze_group(orig_nodes, group_cfg.node_range)
         new_nodes, concat_out = _rewrite_group(
             group_info,
             group_cfg,
