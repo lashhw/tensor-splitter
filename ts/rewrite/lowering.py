@@ -1,24 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from ..config import GroupConfig
-from .group_chain import GroupInfo
-from .tiling import _conv_input_slice_for_output, _conv_output_height, _partition_ranges
-from .graph_ops import (
-    _clone_shape_with_height,
-    _conv_attrs_with_height_pad,
-    _conv_params,
-    _make_concat,
-    _make_pad,
-    _make_slice,
-    _slice_from_tiles,
-    _tensor_height,
-)
-from .models import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
+from .catalog import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
+from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
+from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _slice_from_tiles, _tensor_height
+from .tiling import _conv_input_slice_for_output, _conv_output_height, _partition_ranges
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
@@ -242,48 +232,6 @@ def _build_conv_tiles(
     return out_tiles, out_ranges, blocks
 
 
-def _build_entry_tiles(
-    name_scope: NameScope,
-    entry: gs.Variable,
-    tile_count: int,
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Variable], List[Tuple[int, int]]]:
-    h_in = _tensor_height(entry)
-    ranges = _partition_ranges(h_in, tile_count)
-    tiles = []
-    for start, end in ranges:
-        tile = _make_slice(name_scope, entry, start, end, 2, nodes)
-        tiles.append(tile)
-    return tiles, ranges
-
-
-def _build_execution_order_map(
-    blocks: Sequence[TileBlock],
-    schedule: Sequence[Tuple[int, int]],
-) -> Dict[int, int]:
-    schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    block_pairs = {(block.orig_index, block.tile_id) for block in blocks}
-    schedule_pairs = set(schedule_pos)
-    if block_pairs != schedule_pairs:
-        missing = sorted(block_pairs - schedule_pairs)
-        extra = sorted(schedule_pairs - block_pairs)
-        raise ValueError(
-            "execution_order does not match rewritten block set. "
-            f"Missing: {missing}, Extra: {extra}"
-        )
-
-    order_map = {}
-    for block in blocks:
-        order = schedule_pos.get((block.orig_index, block.tile_id))
-        if order is None:
-            raise ValueError(
-                "execution_order is missing entry for rewritten block "
-                f"{(block.orig_index, block.tile_id)}"
-            )
-        block.assign_order(order_map, order)
-    return order_map
-
-
 def _build_tiled_op(
     name_scope: NameScope,
     node: gs.Node,
@@ -320,44 +268,3 @@ def _build_tiled_op(
         )
         return next_tiles, ranges, blocks
     raise RuntimeError(f"unsupported op {node.op}")
-
-
-def _build_group_tiles(
-    name_scope: NameScope,
-    group_info: GroupInfo,
-    group_cfg: GroupConfig,
-    node_index_map: Dict[int, int],
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    nodes = []
-    blocks = []
-
-    for node in group_info.nodes:
-        _ensure_supported_op(node)
-
-    tiles, ranges = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.tile_count, nodes)
-
-    for node in group_info.nodes:
-        orig_index = node_index_map[id(node)]
-        main_idx = group_info.main_input_index[id(node)]
-        tiles, ranges, op_blocks = _build_tiled_op(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            ranges,
-            group_cfg.tile_count,
-            nodes,
-            main_idx,
-        )
-        blocks.extend(op_blocks)
-
-    return tiles, nodes, blocks
-
-
-def _build_group_output(
-    name_scope: NameScope,
-    tiles: Sequence[gs.Variable],
-    shape_hint: Sequence[Any] | None,
-    nodes: List[gs.Node],
-) -> gs.Variable:
-    return _make_concat(name_scope, tiles, axis=2, nodes=nodes, shape_hint=shape_hint)

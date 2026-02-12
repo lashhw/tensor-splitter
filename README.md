@@ -94,11 +94,13 @@ pytest -q
 - `ts/cli.py`: CLI entry point.
 - `ts/config.py`: config parsing and validation.
 - `ts/verify.py`: numerical output comparison with ONNX Runtime.
-- `ts/rewrite/group_chain.py`: group analysis and graph constraints.
+- `ts/rewrite/analysis.py`: group analysis and graph constraints.
 - `ts/rewrite/tiling.py`: tensor-range and convolution halo math.
 - `ts/rewrite/pipeline.py`: high-level model rewrite pipeline.
-- `ts/rewrite/op_rewriters.py`: op-specific tiled graph construction.
-- `ts/rewrite/graph_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
-- `ts/rewrite/scheduling.py`: graph ordering and consumer rewiring utilities.
-- `ts/rewrite/models.py`: tile block model and supported op sets.
+- `ts/rewrite/assembly.py`: group-level tile assembly and concat output.
+- `ts/rewrite/lowering.py`: op-specific tiled graph lowering.
+- `ts/rewrite/tensor.py`: graph tensor helpers (slice/concat/pad/shape).
+- `ts/rewrite/conv.py`: convolution attribute/parameter helpers.
+- `ts/rewrite/ordering.py`: execution-order mapping and topo checks.
+- `ts/rewrite/catalog.py`: tile block model and supported op sets.
 - `ts/rewrite/naming.py`: graph-safe rewritten name generation.

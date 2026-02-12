@@ -6,10 +6,10 @@ import onnx
 import onnx_graphsurgeon as gs
 
 from ..config import GroupConfig
-from .group_chain import GroupInfo, _analyze_group
+from .analysis import GroupInfo, _analyze_group
+from .assembly import _build_group_output, _build_group_tiles
 from .naming import NameScope
-from .op_rewriters import _build_execution_order_map, _build_group_output, _build_group_tiles
-from .scheduling import _ensure_toposorted, _order_by_execution_order
+from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_execution_order
 
 
 def _rewrite_group(
