@@ -26,7 +26,6 @@ UNARY_OPS = {
     "Identity",
 }
 UNARY_CONST_OPS = {
-    "Clip",
     "BatchNormalization",
 }
 BINARY_OPS = {"Add", "Mul", "Sub", "Div"}

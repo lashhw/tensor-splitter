@@ -9,7 +9,7 @@ from ..config import GroupConfig
 from .group_chain import GroupInfo, _analyze_group
 from .naming import NameScope
 from .op_rewriters import _build_execution_order_map, _build_group_output, _build_group_tiles
-from .scheduling import _ensure_toposorted, _order_by_execution_order, _replace_tensor_consumers
+from .scheduling import _ensure_toposorted, _order_by_execution_order
 
 
 def _rewrite_group(
@@ -50,7 +50,15 @@ def rewrite_model(model: onnx.ModelProto, groups: Sequence[GroupConfig]) -> onnx
     for group_cfg in groups_sorted:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)
         new_nodes, concat_out = _rewrite_group(group_info, group_cfg, node_index_map, name_scope)
-        _replace_tensor_consumers(graph, group_info.exit_tensor, concat_out)
+
+        for consumer in list(group_info.exit_tensor.outputs):
+            for idx, inp in enumerate(consumer.inputs):
+                if inp is group_info.exit_tensor:
+                    consumer.inputs[idx] = concat_out
+
+        for idx, out in enumerate(graph.outputs):
+            if out is group_info.exit_tensor:
+                graph.outputs[idx] = concat_out
 
         for node in group_info.nodes:
             node.inputs = []
@@ -60,14 +68,11 @@ def rewrite_model(model: onnx.ModelProto, groups: Sequence[GroupConfig]) -> onnx
         node_b = orig_nodes[group_cfg.node_range[1]]
         start_pos = graph.nodes.index(node_a)
         end_pos = graph.nodes.index(node_b)
-        if end_pos < start_pos:
-            raise RuntimeError("group nodes are not contiguous in current graph")
 
         graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
-
-    graph.cleanup(remove_unused_graph_inputs=False)
 
     out_model = gs.export_onnx(graph)
     out_model = onnx.shape_inference.infer_shapes(out_model)
     onnx.checker.check_model(out_model)
+
     return out_model

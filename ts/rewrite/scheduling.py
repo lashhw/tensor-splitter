@@ -39,14 +39,3 @@ def _ensure_toposorted(nodes: Sequence[gs.Node]) -> None:
                     continue
                 if producer_idx > node_idx:
                     raise ValueError("graph nodes are not topologically sorted")
-
-
-def _replace_tensor_consumers(graph: gs.Graph, old: gs.Tensor, new: gs.Tensor) -> None:
-    for consumer in list(old.outputs):
-        for idx, inp in enumerate(consumer.inputs):
-            if inp is old:
-                consumer.inputs[idx] = new
-
-    for idx, out in enumerate(graph.outputs):
-        if out is old:
-            graph.outputs[idx] = new
