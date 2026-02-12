@@ -9,7 +9,7 @@ from .op_rewriters import _apply_schedule_priority, _build_group_output, _build_
 from .scheduling import _ensure_toposorted, _replace_tensor_consumers, _toposort_with_priority
 
 
-def rewrite_group(
+def _rewrite_group(
     group_info,
     group_cfg,
     node_index_map,
@@ -45,7 +45,7 @@ def rewrite_model(model, groups):
     groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     for group_cfg in groups_sorted:
         group_info = analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, concat_out = rewrite_group(
+        new_nodes, concat_out = _rewrite_group(
             group_info,
             group_cfg,
             node_index_map,

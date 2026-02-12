@@ -34,7 +34,7 @@ def _normalize_execution_order(execution_order: Iterable) -> List[ScheduleEntry]
 def _validate_group(group: GroupConfig) -> None:
     a, b = group.node_range
     if a < 0 or b < 0 or b < a:
-        raise ValueError(f"node_range must be non-negative and a<=b; got {group.node_range}")
+        raise ValueError(f"node_range must be non-negative and a <= b; got {group.node_range}")
     if group.tile_count <= 0:
         raise ValueError(f"tile_count must be > 0; got {group.tile_count}")
 
