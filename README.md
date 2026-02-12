@@ -25,7 +25,7 @@ pip install -r requirements.txt
 2. Run the rewrite command.
 
    ```bash
-   python -m tensor_splitter.cli input.onnx config.json output.onnx
+   python -m ts.cli input.onnx config.json output.onnx
    ```
 
 3. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 ### Usage
 
 ```bash
-python -m tensor_splitter.cli INPUT CONFIG OUTPUT [--no-verify]
+python -m ts.cli INPUT CONFIG OUTPUT [--no-verify]
 ```
 
 ### Arguments
@@ -91,14 +91,14 @@ pytest -q
 
 ## Project layout
 
-- `tensor_splitter/cli.py`: CLI entry point.
-- `tensor_splitter/config.py`: config parsing and validation.
-- `tensor_splitter/verification.py`: numerical output comparison with ONNX Runtime.
-- `tensor_splitter/analysis/group_chain.py`: group analysis and graph constraints.
-- `tensor_splitter/tiling/geometry.py`: tensor-range and convolution halo math.
-- `tensor_splitter/rewrite/pipeline.py`: high-level model rewrite pipeline.
-- `tensor_splitter/rewrite/op_rewriters.py`: op-specific tiled graph construction.
-- `tensor_splitter/rewrite/graph_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
-- `tensor_splitter/rewrite/scheduling.py`: graph ordering and consumer rewiring utilities.
-- `tensor_splitter/rewrite/models.py`: tile block model and supported op sets.
-- `tensor_splitter/rewrite/naming.py`: graph-safe rewritten name generation.
+- `ts/cli.py`: CLI entry point.
+- `ts/config.py`: config parsing and validation.
+- `ts/verification.py`: numerical output comparison with ONNX Runtime.
+- `ts/analysis/group_chain.py`: group analysis and graph constraints.
+- `ts/tiling/geometry.py`: tensor-range and convolution halo math.
+- `ts/rewrite/pipeline.py`: high-level model rewrite pipeline.
+- `ts/rewrite/op_rewriters.py`: op-specific tiled graph construction.
+- `ts/rewrite/graph_ops.py`: graph tensor helpers (slice/concat/pad/conv attrs).
+- `ts/rewrite/scheduling.py`: graph ordering and consumer rewiring utilities.
+- `ts/rewrite/models.py`: tile block model and supported op sets.
+- `ts/rewrite/naming.py`: graph-safe rewritten name generation.

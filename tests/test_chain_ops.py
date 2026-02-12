@@ -2,8 +2,8 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 
-from tensor_splitter.config import GroupConfig
-from tensor_splitter.rewrite import rewrite_model
+from ts.config import GroupConfig
+from ts.rewrite import rewrite_model
 
 
 def _make_chain_model():
