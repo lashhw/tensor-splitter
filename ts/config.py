@@ -16,16 +16,18 @@ class GroupConfig:
     execution_order: List[ScheduleEntry]
 
 
+def _to_int(value: object, field: str) -> int:
+    assert type(value) is int, f"{field} must be an integer; got {value!r}"
+    return value
+
+
 def _to_tuple_pair(value: object, field: str) -> IndexPair:
     if isinstance(value, list):
         value = tuple(value)
     assert isinstance(value, tuple) and len(value) == 2, (
         f"{field} must be a tuple/list of length 2; got {value!r}"
     )
-    try:
-        return int(value[0]), int(value[1])
-    except Exception:
-        assert False, f"{field} must contain integers; got {value!r}"
+    return _to_int(value[0], f"{field}[0]"), _to_int(value[1], f"{field}[1]")
 
 
 def _normalize_execution_order(execution_order: Iterable[object]) -> List[ScheduleEntry]:
@@ -79,7 +81,7 @@ def parse_config(path: str | Path) -> List[GroupConfig]:
 
         group = GroupConfig(
             node_range=_to_tuple_pair(entry["node_range"], "node_range"),
-            tile_count=int(entry["tile_count"]),
+            tile_count=_to_int(entry["tile_count"], "tile_count"),
             execution_order=_normalize_execution_order(entry["execution_order"]),
         )
         _validate_group(group)
