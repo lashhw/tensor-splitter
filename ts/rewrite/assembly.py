@@ -17,15 +17,15 @@ def _build_entry_tiles(
     name_scope: NameScope,
     entry: gs.Variable,
     tile_count: int,
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Variable], List[Tuple[int, int]]]:
+) -> Tuple[List[gs.Variable], List[Tuple[int, int]], List[gs.Node]]:
+    nodes: List[gs.Node] = []
     h_in = _tensor_height(entry)
     ranges = _partition_ranges(h_in, tile_count)
     tiles = []
     for start, end in ranges:
         tile = _make_slice(name_scope, entry, start, end, 2, nodes)
         tiles.append(tile)
-    return tiles, ranges
+    return tiles, ranges, nodes
 
 
 def _build_group_tiles(
@@ -34,14 +34,11 @@ def _build_group_tiles(
     group_cfg: GroupConfig,
     node_index_map: Dict[int, int],
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    nodes = []
-    blocks = []
-
     for node in group_info.nodes:
         _ensure_supported_op(node)
+    tiles, ranges, nodes = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.tile_count)
 
-    tiles, ranges = _build_entry_tiles(name_scope, group_info.entry_tensor, group_cfg.tile_count, nodes)
-
+    blocks = []
     for node in group_info.nodes:
         orig_index = node_index_map[id(node)]
         main_idx = group_info.main_input_index[id(node)]
