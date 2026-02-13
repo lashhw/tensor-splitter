@@ -47,12 +47,15 @@ def _conv_input_slice_for_output(
     h_in: int,
 ) -> ConvInputSlice:
     assert y1 > y0, f"invalid output range [{y0},{y1})"
+    assert h_in >= 0, f"invalid input height {h_in}"
 
     rf = _receptive_field(kernel, dilation)
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + rf
-    slice_start = max(0, x0)
-    slice_end = min(h_in, x1)
+    # Clamp both bounds into [0, h_in] to avoid inverted ranges when output
+    # tiles map fully outside the original tensor and rely only on padding.
+    slice_start = min(max(0, x0), h_in)
+    slice_end = min(max(0, x1), h_in)
     pad_top_local = max(0, -x0)
     pad_bottom_local = max(0, x1 - h_in)
 
