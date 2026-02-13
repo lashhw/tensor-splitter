@@ -29,9 +29,9 @@ def _build_unary_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
-    nodes: List[gs.Node],
-) -> Tuple[List[gs.Variable], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     out_tiles = []
+    new_nodes: List[gs.Node] = []
     blocks = []
 
     for tile_id, tile in enumerate(tiles):
@@ -47,11 +47,11 @@ def _build_unary_tiles(
             outputs=[out],
             attrs=dict(node.attrs) if node.attrs else {},
         )
-        nodes.append(new_node)
+        new_nodes.append(new_node)
         out_tiles.append(out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
 
-    return out_tiles, blocks
+    return out_tiles, new_nodes, blocks
 
 
 def _build_unary_const_tiles(
@@ -59,10 +59,10 @@ def _build_unary_const_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
-    nodes: List[gs.Node],
     main_input_index: int,
-) -> Tuple[List[gs.Variable], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     out_tiles = []
+    new_nodes: List[gs.Node] = []
     blocks = []
 
     for tile_id, tile in enumerate(tiles):
@@ -87,11 +87,11 @@ def _build_unary_const_tiles(
             outputs=[out],
             attrs=dict(node.attrs) if node.attrs else {},
         )
-        nodes.append(new_node)
+        new_nodes.append(new_node)
         out_tiles.append(out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
 
-    return out_tiles, blocks
+    return out_tiles, new_nodes, blocks
 
 
 def _build_binary_tiles(
@@ -100,11 +100,10 @@ def _build_binary_tiles(
     orig_index: int,
     tiles: Sequence[gs.Variable],
     in_ranges: Sequence[Tuple[int, int]],
-    nodes: List[gs.Node],
     main_input_index: int,
-) -> Tuple[List[gs.Variable], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     if not tiles:
-        return [], []
+        return [], [], []
 
     main_rank = len(tiles[0].shape) if tiles[0].shape is not None else 0
     split_axis = 2
@@ -133,6 +132,7 @@ def _build_binary_tiles(
         return gs.Constant(name_scope.make(f"{constant.name}_tile{tile_id}"), values=tile_values)
 
     out_tiles = []
+    new_nodes: List[gs.Node] = []
     blocks = []
 
     for tile_id, (tile, (start, end)) in enumerate(zip(tiles, in_ranges)):
@@ -159,11 +159,11 @@ def _build_binary_tiles(
             outputs=[out],
             attrs=dict(node.attrs) if node.attrs else {},
         )
-        nodes.append(new_node)
+        new_nodes.append(new_node)
         out_tiles.append(out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
 
-    return out_tiles, blocks
+    return out_tiles, new_nodes, blocks
 
 
 def _build_conv_tiles(
@@ -173,9 +173,8 @@ def _build_conv_tiles(
     tiles: Sequence[gs.Variable],
     in_ranges: Sequence[Tuple[int, int]],
     out_ranges: Sequence[Tuple[int, int]],
-    nodes: List[gs.Node],
     main_input_index: int,
-) -> Tuple[List[gs.Variable], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     kernel_shape, strides, dilations, pads = _conv_params(node)
     k_h = kernel_shape[0]
     s_h = strides[0]
@@ -190,6 +189,7 @@ def _build_conv_tiles(
         )
 
     out_tiles = []
+    new_nodes: List[gs.Node] = []
     blocks = []
 
     for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
@@ -259,11 +259,11 @@ def _build_conv_tiles(
             conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
             block_nodes.append(conv_trim_node)
 
-        nodes.extend(block_nodes)
+        new_nodes.extend(block_nodes)
         out_tiles.append(conv_out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
 
-    return out_tiles, blocks
+    return out_tiles, new_nodes, blocks
 
 
 def _build_tiled_op(
@@ -273,47 +273,26 @@ def _build_tiled_op(
     tiles: Sequence[gs.Variable],
     in_ranges: Sequence[Tuple[int, int]],
     out_ranges: Sequence[Tuple[int, int]],
-    nodes: List[gs.Node],
     main_idx: int,
-) -> Tuple[List[gs.Variable], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     if node.op == "Conv":
-        next_tiles, blocks = _build_conv_tiles(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            in_ranges,
-            out_ranges,
-            nodes,
-            main_idx,
+        next_tiles, new_nodes, blocks = _build_conv_tiles(
+            name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx
         )
-        return next_tiles, blocks
+        return next_tiles, new_nodes, blocks
     if in_ranges != out_ranges:
-        raise RuntimeError(
-            f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
-        )
+        raise RuntimeError(f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}")
     if node.op in UNARY_OPS:
-        next_tiles, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles, nodes)
-        return next_tiles, blocks
+        next_tiles, new_nodes, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles)
+        return next_tiles, new_nodes, blocks
     if node.op in UNARY_CONST_OPS:
-        next_tiles, blocks = _build_unary_const_tiles(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            nodes,
-            main_idx,
+        next_tiles, new_nodes, blocks = _build_unary_const_tiles(
+            name_scope, node, orig_index, tiles, main_idx
         )
-        return next_tiles, blocks
+        return next_tiles, new_nodes, blocks
     if node.op in BINARY_OPS:
-        next_tiles, blocks = _build_binary_tiles(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            in_ranges,
-            nodes,
-            main_idx,
+        next_tiles, new_nodes, blocks = _build_binary_tiles(
+            name_scope, node, orig_index, tiles, in_ranges, main_idx
         )
-        return next_tiles, blocks
+        return next_tiles, new_nodes, blocks
     raise RuntimeError(f"unsupported op {node.op}")

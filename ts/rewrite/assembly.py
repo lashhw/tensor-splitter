@@ -95,7 +95,8 @@ def _build_group_tiles(
         main_idx = group_info.main_input_index[id(node)]
         in_ranges = stage_ranges[stage_idx]
         out_ranges = stage_ranges[stage_idx + 1]
-        tiles, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, in_ranges, out_ranges, nodes, main_idx)
+        tiles, op_nodes, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx)
+        nodes.extend(op_nodes)
         blocks.extend(op_blocks)
 
     return tiles, nodes, blocks
