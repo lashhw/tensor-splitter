@@ -14,25 +14,6 @@ from .tensor import _make_concat, _make_slice, _tensor_height
 from .tiling import _conv_input_slice_for_output, _partition_ranges
 
 
-def _build_entry_tiles(
-    name_scope: NameScope,
-    entry: gs.Variable,
-    entry_ranges: Sequence[Tuple[int, int]],
-) -> Tuple[List[gs.Variable], List[gs.Node]]:
-    nodes: List[gs.Node] = []
-    h_in = _tensor_height(entry)
-    tiles = []
-    for tile_id, (start, end) in enumerate(entry_ranges):
-        if start < 0 or end < 0 or start > end or end > h_in:
-            raise RuntimeError(
-                f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
-            )
-        tile, tile_node = _make_slice(name_scope, entry, start, end, 2)
-        nodes.append(tile_node)
-        tiles.append(tile)
-    return tiles, nodes
-
-
 def _plan_stage_ranges(
     group_info: GroupInfo,
     tile_count: int,
@@ -71,19 +52,30 @@ def _plan_stage_ranges(
 
         in_ranges: List[Tuple[int, int]] = []
         for y0, y1 in out_ranges:
-            slice_info = _conv_input_slice_for_output(
-                y0=y0,
-                y1=y1,
-                stride=s_h,
-                dilation=d_h,
-                kernel=k_h,
-                pad_top=pad_top,
-                h_in=h_in,
-            )
+            slice_info = _conv_input_slice_for_output(y0, y1, s_h, d_h, k_h, pad_top, h_in)
             in_ranges.append((slice_info.slice_start, slice_info.slice_end))
         stage_ranges[stage_idx] = in_ranges
 
     return stage_ranges
+
+
+def _build_entry_tiles(
+    name_scope: NameScope,
+    entry: gs.Variable,
+    entry_ranges: Sequence[Tuple[int, int]],
+) -> Tuple[List[gs.Variable], List[gs.Node]]:
+    nodes: List[gs.Node] = []
+    h_in = _tensor_height(entry)
+    tiles = []
+    for tile_id, (start, end) in enumerate(entry_ranges):
+        if start < 0 or end < 0 or start > end or end > h_in:
+            raise RuntimeError(
+                f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
+            )
+        tile, tile_node = _make_slice(name_scope, entry, start, end, 2)
+        nodes.append(tile_node)
+        tiles.append(tile)
+    return tiles, nodes
 
 
 def _build_group_tiles(
