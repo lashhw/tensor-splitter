@@ -108,6 +108,6 @@ def _build_group_output(
     shape_hint: Sequence[Any] | None,
     nodes: List[gs.Node],
 ) -> gs.Variable:
-    out, concat_node = _make_concat(name_scope, tiles, axis=2, shape_hint=shape_hint)
+    out, concat_node = _make_concat(name_scope, tiles, 2, shape_hint)
     nodes.append(concat_node)
     return out

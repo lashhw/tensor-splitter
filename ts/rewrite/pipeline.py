@@ -19,7 +19,7 @@ def _rewrite_group(
     name_scope: NameScope,
 ) -> Tuple[List[gs.Node], gs.Variable]:
     tiles, nodes, blocks = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
-    concat_out = _build_group_output(name_scope, tiles, shape_hint=group_info.exit_tensor.shape, nodes=nodes)
+    concat_out = _build_group_output(name_scope, tiles, group_info.exit_tensor.shape, nodes)
     order_map = _build_execution_order_map(blocks, group_cfg.execution_order)
     ordered_nodes = _order_by_execution_order(nodes, order_map)
     return ordered_nodes, concat_out
