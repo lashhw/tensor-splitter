@@ -48,10 +48,17 @@ def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tupl
         raise ValueError("output count mismatch between original and rewritten models")
 
     diffs: Dict[str, float] = {}
+    ok = True
     for idx, (orig, new) in enumerate(zip(orig_outs, new_outs)):
         name = original.graph.output[idx].name
-        diff = np.max(np.abs(orig - new))
-        diffs[name] = float(diff)
-        np.testing.assert_allclose(orig, new, rtol=1e-5, atol=1e-6)
+        if orig.shape != new.shape:
+            diffs[name] = float("inf")
+            ok = False
+            continue
 
-    return True, diffs
+        diff = float(np.max(np.abs(orig - new)))
+        diffs[name] = diff
+        if not np.allclose(orig, new, rtol=1e-5, atol=1e-6):
+            ok = False
+
+    return ok, diffs

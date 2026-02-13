@@ -78,6 +78,34 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
         raise AssertionError("rewrite_model should reject dependency-violating execution_order")
 
 
+def _make_add_with_height_constant_model():
+    inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 10, 6])
+    add_const = gs.Constant("C_height", values=np.random.randn(1, 3, 10, 1).astype(np.float32))
+    out = gs.Variable("out", dtype=np.float32, shape=[1, 3, 10, 6])
+    add = gs.Node(op="Add", inputs=[inp, add_const], outputs=[out])
+    graph = gs.Graph(nodes=[add], inputs=[inp], outputs=[out])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
+def test_binary_op_rewrite_slices_height_dependent_constants():
+    model = _make_add_with_height_constant_model()
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 10, 6)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
 if __name__ == "__main__":
     test_chain_rewrite_matches()
     test_chain_rewrite_rejects_dependency_violating_execution_order()
+    test_binary_op_rewrite_slices_height_dependent_constants()

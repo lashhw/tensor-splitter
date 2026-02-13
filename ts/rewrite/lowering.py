@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Sequence, Tuple
 
+import numpy as np
 import onnx_graphsurgeon as gs
 
 from .catalog import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
@@ -98,13 +99,43 @@ def _build_binary_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
+    ranges: Sequence[Tuple[int, int]],
     nodes: List[gs.Node],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[TileBlock]]:
+    if not tiles:
+        return [], []
+
+    main_rank = len(tiles[0].shape) if tiles[0].shape is not None else 0
+    split_axis = 2
+    full_height = ranges[-1][1]
+
+    def _tile_constant_input(constant: gs.Constant, tile_id: int, start: int, end: int) -> gs.Constant:
+        values = np.asarray(constant.values)
+        const_rank = values.ndim
+        const_axis = split_axis + (const_rank - main_rank)
+
+        if const_axis < 0 or const_axis >= const_rank:
+            return constant
+
+        const_dim = values.shape[const_axis]
+        if const_dim == 1:
+            return constant
+        if const_dim != full_height:
+            raise RuntimeError(
+                f"binary op {node.name or node.op} constant input {constant.name} has split-axis "
+                f"dimension {const_dim}, expected 1 or {full_height}"
+            )
+
+        slices = [slice(None)] * const_rank
+        slices[const_axis] = slice(start, end)
+        tile_values = np.ascontiguousarray(values[tuple(slices)])
+        return gs.Constant(name_scope.make(f"{constant.name}_tile{tile_id}"), values=tile_values)
+
     out_tiles = []
     blocks = []
 
-    for tile_id, tile in enumerate(tiles):
+    for tile_id, (tile, (start, end)) in enumerate(zip(tiles, ranges)):
         inputs = list(node.inputs)
         inputs[main_input_index] = tile
         for idx, inp in enumerate(inputs):
@@ -114,6 +145,7 @@ def _build_binary_tiles(
                 raise RuntimeError(
                     f"binary op {node.name or node.op} requires constant external input; got {inp.name}"
                 )
+            inputs[idx] = _tile_constant_input(inp, tile_id, start, end)
 
         out_shape = tile.shape if hasattr(tile, "shape") else None
         out = gs.Variable(
@@ -264,6 +296,7 @@ def _build_tiled_op(
             node,
             orig_index,
             tiles,
+            ranges,
             nodes,
             main_idx,
         )
