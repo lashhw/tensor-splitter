@@ -64,17 +64,19 @@ def _build_entry_tiles(
     entry: gs.Variable,
     entry_ranges: Sequence[Tuple[int, int]],
 ) -> Tuple[List[gs.Variable], List[gs.Node]]:
-    nodes: List[gs.Node] = []
     h_in = _tensor_height(entry)
     tiles = []
+    nodes: List[gs.Node] = []
+
     for tile_id, (start, end) in enumerate(entry_ranges):
         if start < 0 or end < 0 or start > end or end > h_in:
             raise RuntimeError(
                 f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
             )
-        tile, tile_node = _make_slice(name_scope, entry, start, end, 2)
-        nodes.append(tile_node)
+        tile, node = _make_slice(name_scope, entry, start, end, 2)
         tiles.append(tile)
+        nodes.append(node)
+
     return tiles, nodes
 
 
@@ -95,16 +97,7 @@ def _build_group_tiles(
         main_idx = group_info.main_input_index[id(node)]
         in_ranges = stage_ranges[stage_idx]
         out_ranges = stage_ranges[stage_idx + 1]
-        tiles, op_blocks = _build_tiled_op(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            in_ranges,
-            out_ranges,
-            nodes,
-            main_idx,
-        )
+        tiles, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, in_ranges, out_ranges, nodes, main_idx)
         blocks.extend(op_blocks)
 
     return tiles, nodes, blocks
