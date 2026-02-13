@@ -173,25 +173,25 @@ def _build_conv_tiles(
             pad_top=pad_top,
             h_in=h_in,
         )
-        sliced = _slice_from_tiles(
+        sliced, slice_nodes = _slice_from_tiles(
             name_scope,
             tiles,
             ranges,
             slice_info.slice_start,
             slice_info.slice_end,
             axis=2,
-            nodes=block_nodes,
         )
+        block_nodes.extend(slice_nodes)
 
         padded = sliced
         if slice_info.pad_top or slice_info.pad_bottom:
-            padded = _make_pad(
+            padded, pad_node = _make_pad(
                 name_scope,
                 sliced,
                 pad_top=slice_info.pad_top,
                 pad_bottom=slice_info.pad_bottom,
-                nodes=block_nodes,
             )
+            block_nodes.append(pad_node)
 
         new_pads = [0, pads[1], 0, pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
@@ -223,7 +223,8 @@ def _build_conv_tiles(
                 raise RuntimeError(
                     f"Conv tile output shorter than expected: expected {y1 - y0}, got {expected}"
                 )
-            conv_out = _make_slice(name_scope, conv_out, 0, y1 - y0, 2, block_nodes)
+            conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
+            block_nodes.append(conv_trim_node)
 
         nodes.extend(block_nodes)
         out_tiles.append(conv_out)

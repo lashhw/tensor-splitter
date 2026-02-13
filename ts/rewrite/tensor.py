@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 import numpy as np
 import onnx_graphsurgeon as gs
@@ -52,8 +52,7 @@ def _make_slice(
     start: int,
     end: int,
     axis: int,
-    nodes: List[gs.Node],
-) -> gs.Variable:
+) -> Tuple[gs.Variable, gs.Node]:
     starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
     ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
@@ -68,17 +67,15 @@ def _make_slice(
         shape=out_shape,
     )
     node = gs.Node(op="Slice", inputs=[data, starts, ends, axes, steps], outputs=[out])
-    nodes.append(node)
-    return out
+    return out, node
 
 
 def _make_concat(
     name_scope: NameScope,
     inputs: Sequence[gs.Tensor],
     axis: int,
-    nodes: List[gs.Node],
     shape_hint: Optional[Sequence[Any]] = None,
-) -> gs.Variable:
+) -> Tuple[gs.Variable, gs.Node]:
     if not inputs:
         raise RuntimeError("concat inputs must be non-empty")
     out_shape = None
@@ -86,8 +83,7 @@ def _make_concat(
         out_shape = list(shape_hint)
     out = gs.Variable(name_scope.make("tsplit_concat"), dtype=inputs[0].dtype, shape=out_shape)
     node = gs.Node(op="Concat", inputs=inputs, outputs=[out], attrs={"axis": axis})
-    nodes.append(node)
-    return out
+    return out, node
 
 
 def _slice_from_tiles(
@@ -97,10 +93,10 @@ def _slice_from_tiles(
     start: int,
     end: int,
     axis: int,
-    nodes: List[gs.Node],
-) -> gs.Variable:
+) -> Tuple[gs.Variable, List[gs.Node]]:
     if start >= end:
         raise RuntimeError(f"invalid slice range [{start},{end})")
+    created_nodes = []
     pieces = []
     for tile, (s, e) in zip(tiles, ranges):
         overlap_start = max(s, start)
@@ -112,18 +108,21 @@ def _slice_from_tiles(
         if rel_start == 0 and rel_end == (e - s):
             pieces.append(tile)
         else:
-            piece = _make_slice(name_scope, tile, rel_start, rel_end, axis, nodes)
+            piece, piece_node = _make_slice(name_scope, tile, rel_start, rel_end, axis)
+            created_nodes.append(piece_node)
             pieces.append(piece)
 
     if not pieces:
         raise RuntimeError(f"slice [{start},{end}) does not overlap any tiles")
     if len(pieces) == 1:
-        return pieces[0]
+        return pieces[0], created_nodes
 
     out_shape = None
     if hasattr(tiles[0], "shape") and tiles[0].shape is not None:
         out_shape = _clone_shape_with_height(tiles[0].shape, axis, end - start)
-    return _make_concat(name_scope, pieces, axis, nodes, shape_hint=out_shape)
+    concat_out, concat_node = _make_concat(name_scope, pieces, axis, shape_hint=out_shape)
+    created_nodes.append(concat_node)
+    return concat_out, created_nodes
 
 
 def _make_pad(
@@ -131,8 +130,7 @@ def _make_pad(
     data: gs.Tensor,
     pad_top: int,
     pad_bottom: int,
-    nodes: List[gs.Node],
-) -> gs.Variable:
+) -> Tuple[gs.Variable, gs.Node]:
     rank = _tensor_rank(data)
     if rank != 4:
         raise RuntimeError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
@@ -154,5 +152,4 @@ def _make_pad(
         outputs=[out],
         attrs={"mode": "constant"},
     )
-    nodes.append(node)
-    return out
+    return out, node

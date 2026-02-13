@@ -23,7 +23,8 @@ def _build_entry_tiles(
     ranges = _partition_ranges(h_in, tile_count)
     tiles = []
     for start, end in ranges:
-        tile = _make_slice(name_scope, entry, start, end, 2, nodes)
+        tile, tile_node = _make_slice(name_scope, entry, start, end, 2)
+        nodes.append(tile_node)
         tiles.append(tile)
     return tiles, ranges, nodes
 
@@ -63,4 +64,6 @@ def _build_group_output(
     shape_hint: Sequence[Any] | None,
     nodes: List[gs.Node],
 ) -> gs.Variable:
-    return _make_concat(name_scope, tiles, axis=2, nodes=nodes, shape_hint=shape_hint)
+    out, concat_node = _make_concat(name_scope, tiles, axis=2, shape_hint=shape_hint)
+    nodes.append(concat_node)
+    return out
