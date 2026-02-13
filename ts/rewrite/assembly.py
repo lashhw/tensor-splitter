@@ -43,16 +43,8 @@ def _build_group_tiles(
     for node in group_info.nodes:
         orig_index = node_index_map[id(node)]
         main_idx = group_info.main_input_index[id(node)]
-        tiles, ranges, op_blocks = _build_tiled_op(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            ranges,
-            group_cfg.tile_count,
-            nodes,
-            main_idx,
-        )
+        tiles, ranges, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, ranges,
+                                                   group_cfg.tile_count, nodes, main_idx)
         blocks.extend(op_blocks)
 
     return tiles, nodes, blocks
