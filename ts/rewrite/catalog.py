@@ -28,4 +28,4 @@ UNARY_OPS = {
 UNARY_CONST_OPS = {
     "BatchNormalization",
 }
-BINARY_OPS = {"Add", "Mul", "Sub", "Div"}
+BINARY_OPS = {"Add"}
