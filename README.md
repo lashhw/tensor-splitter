@@ -8,7 +8,7 @@ Given an input model and a split plan, the tool:
 
 - Splits the chain input tensor into multiple tiles.
 - Back-propagates required ranges from group output to build per-tile entry halos.
-- Rewrites supported operators to run per tile with no inter-tile communication inside the group.
+- Rewrites supported operators to run per tile inside the group.
 - Handles convolution border padding locally per tile.
 - Reassembles the tiled results back into the original tensor layout.
 
@@ -89,19 +89,3 @@ Run the test suite:
 ```bash
 pytest
 ```
-
-## Project layout
-
-- `ts/cli.py`: CLI entry point.
-- `ts/config.py`: config parsing and validation.
-- `ts/verify.py`: numerical output comparison with ONNX Runtime.
-- `ts/rewrite/analysis.py`: group analysis and graph constraints.
-- `ts/rewrite/tiling.py`: tensor-range and convolution halo math.
-- `ts/rewrite/pipeline.py`: high-level model rewrite pipeline.
-- `ts/rewrite/assembly.py`: group-level tile assembly and concat output.
-- `ts/rewrite/lowering.py`: op-specific tiled graph lowering.
-- `ts/rewrite/tensor.py`: graph tensor helpers (slice/concat/pad/shape).
-- `ts/rewrite/conv.py`: convolution attribute/parameter helpers.
-- `ts/rewrite/ordering.py`: execution-order mapping and topo checks.
-- `ts/rewrite/catalog.py`: tile block model and supported op sets.
-- `ts/rewrite/naming.py`: graph-safe rewritten name generation.
