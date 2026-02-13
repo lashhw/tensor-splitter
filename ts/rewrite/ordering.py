@@ -17,7 +17,7 @@ def _build_execution_order_map(
     if block_pairs != schedule_pairs:
         missing = sorted(block_pairs - schedule_pairs)
         extra = sorted(schedule_pairs - block_pairs)
-        raise ValueError(
+        assert False, (
             "execution_order does not match rewritten block set. "
             f"Missing: {missing}, Extra: {extra}"
         )
@@ -25,11 +25,10 @@ def _build_execution_order_map(
     order_map = {}
     for block in blocks:
         order = schedule_pos.get((block.orig_index, block.tile_id))
-        if order is None:
-            raise ValueError(
-                "execution_order is missing entry for rewritten block "
-                f"{(block.orig_index, block.tile_id)}"
-            )
+        assert order is not None, (
+            "execution_order is missing entry for rewritten block "
+            f"{(block.orig_index, block.tile_id)}"
+        )
         block.assign_order(order_map, order)
     return order_map
 
@@ -53,8 +52,8 @@ def _order_by_execution_order(nodes: Sequence[gs.Node], order_map: Dict[int, int
 
     try:
         _ensure_toposorted(ordered)
-    except ValueError as exc:
-        raise ValueError("execution_order is not topologically valid for rewritten graph") from exc
+    except AssertionError:
+        assert False, "execution_order is not topologically valid for rewritten graph"
     return ordered
 
 
@@ -66,5 +65,4 @@ def _ensure_toposorted(nodes: Sequence[gs.Node]) -> None:
                 producer_idx = index.get(id(producer))
                 if producer_idx is None:
                     continue
-                if producer_idx > node_idx:
-                    raise ValueError("graph nodes are not topologically sorted")
+                assert producer_idx <= node_idx, "graph nodes are not topologically sorted"

@@ -15,14 +15,15 @@ def _make_input_array(name: str, value_info: onnx.ValueInfoProto) -> np.ndarray:
             shape.append(dim.dim_value)
         else:
             shape.append(None)
-    if any(dim == 0 for dim in shape if dim is not None):
-        raise ValueError(f"input {name} has invalid dimension 0")
-    if any(dim is None for dim in shape):
-        raise ValueError(f"input {name} must have static shapes for verification")
+    assert not any(dim == 0 for dim in shape if dim is not None), (
+        f"input {name} has invalid dimension 0"
+    )
+    assert not any(dim is None for dim in shape), (
+        f"input {name} must have static shapes for verification"
+    )
 
     dtype = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE.get(tensor_type.elem_type)
-    if dtype is None:
-        raise ValueError(f"input {name} has unsupported dtype {tensor_type.elem_type}")
+    assert dtype is not None, f"input {name} has unsupported dtype {tensor_type.elem_type}"
 
     static_shape = tuple(int(dim) for dim in shape)
     rng = np.random.default_rng(0)
@@ -44,8 +45,9 @@ def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tupl
     orig_outs = sess_original.run(None, inputs)
     new_outs = sess_rewritten.run(None, inputs)
 
-    if len(orig_outs) != len(new_outs):
-        raise ValueError("output count mismatch between original and rewritten models")
+    assert len(orig_outs) == len(new_outs), (
+        "output count mismatch between original and rewritten models"
+    )
 
     diffs: Dict[str, float] = {}
     ok = True

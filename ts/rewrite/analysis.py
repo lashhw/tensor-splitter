@@ -25,8 +25,9 @@ def _node_label(node: gs.Node) -> str:
 
 def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range
-    if a < 0 or b >= len(nodes) or b < a:
-        raise ValueError(f"invalid group node_range {node_range} for graph with {len(nodes)} nodes")
+    assert not (a < 0 or b >= len(nodes) or b < a), (
+        f"invalid group node_range {node_range} for graph with {len(nodes)} nodes"
+    )
 
     group_nodes = nodes[a : b + 1]
     group_node_ids = {id(node) for node in group_nodes}
@@ -39,10 +40,9 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
             continue
         entry_candidates.append((idx, inp))
 
-    if len(entry_candidates) != 1:
-        raise ValueError(
-            "group entry node must have exactly one non-constant input from outside the group"
-        )
+    assert len(entry_candidates) == 1, (
+        "group entry node must have exactly one non-constant input from outside the group"
+    )
 
     main_input_index[id(first)] = entry_candidates[0][0]
     entry_tensor = entry_candidates[0][1]
@@ -55,49 +55,42 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
                 continue
 
             producers = list(inp.inputs)
-            if len(producers) != 1:
-                raise ValueError(
-                    f"node {_node_label(node)} input {inp.name} must have exactly one producer; "
-                    f"found {len(producers)}"
-                )
+            assert len(producers) == 1, (
+                f"node {_node_label(node)} input {inp.name} must have exactly one producer; "
+                f"found {len(producers)}"
+            )
             producer = producers[0]
 
-            if id(producer) not in group_node_ids:
-                raise ValueError(
-                    f"node {_node_label(node)} has non-constant input {inp.name} that is produced "
-                    "outside the group; all non-constant inputs must come from nodes in the group"
-                )
+            assert id(producer) in group_node_ids, (
+                f"node {_node_label(node)} has non-constant input {inp.name} that is produced "
+                "outside the group; all non-constant inputs must come from nodes in the group"
+            )
 
             if main_idx is not None:
-                raise ValueError(
+                assert False, (
                     f"node {_node_label(node)} must have exactly one data input from within group"
                 )
             main_idx = idx
 
-            if id(producer) != id(prev):
-                raise ValueError(
-                    f"node {_node_label(node)} data input must come from previous node in group"
-                )
+            assert id(producer) == id(prev), (
+                f"node {_node_label(node)} data input must come from previous node in group"
+            )
 
         if main_idx is None:
-            raise ValueError(
-                f"node {_node_label(node)} must have exactly one data input from within group"
-            )
+            assert False, f"node {_node_label(node)} must have exactly one data input from within group"
         main_input_index[id(node)] = main_idx
 
     for node in group_nodes:
-        if len(node.outputs) != 1:
-            raise ValueError(f"node {_node_label(node)} must have a single output")
+        assert len(node.outputs) == 1, f"node {_node_label(node)} must have a single output"
     exit_tensor = group_nodes[-1].outputs[0]
 
     for node, nxt in zip(group_nodes[:-1], group_nodes[1:]):
         out_tensor = node.outputs[0]
         for consumer in out_tensor.outputs:
-            if consumer is not nxt:
-                raise ValueError(
-                    f"node {_node_label(node)} output has extra consumer {_node_label(consumer)}; "
-                    "rewrite requires a linear chain where each node feeds only the next node"
-                )
+            assert consumer is nxt, (
+                f"node {_node_label(node)} output has extra consumer {_node_label(consumer)}; "
+                "rewrite requires a linear chain where each node feeds only the next node"
+            )
 
     return GroupInfo(
         node_range=node_range,

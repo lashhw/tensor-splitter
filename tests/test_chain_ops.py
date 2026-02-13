@@ -72,10 +72,10 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
 
     try:
         rewrite_model(model, groups)
-    except ValueError as exc:
+    except AssertionError as exc:
         assert "execution_order is not topologically valid" in str(exc)
     else:
-        raise AssertionError("rewrite_model should reject dependency-violating execution_order")
+        assert False, "rewrite_model should reject dependency-violating execution_order"
 
 
 def _make_add_with_height_constant_model():

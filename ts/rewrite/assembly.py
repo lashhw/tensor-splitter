@@ -36,10 +36,9 @@ def _plan_stage_ranges(
         if node.op != "Conv":
             h_in = _tensor_height(node.inputs[main_idx])
             h_out = _tensor_height(node.outputs[0])
-            if h_in != h_out:
-                raise RuntimeError(
-                    f"node {node.name or node.op} changes height ({h_in}->{h_out}) but is not Conv"
-                )
+            assert h_in == h_out, (
+                f"node {node.name or node.op} changes height ({h_in}->{h_out}) but is not Conv"
+            )
             stage_ranges[stage_idx] = list(out_ranges)
             continue
 
@@ -69,8 +68,9 @@ def _build_entry_tiles(
     nodes: List[gs.Node] = []
 
     for tile_id, (start, end) in enumerate(entry_ranges):
-        if start < 0 or end < 0 or start > end or end > h_in:
-            raise RuntimeError(f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}")
+        assert not (start < 0 or end < 0 or start > end or end > h_in), (
+            f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
+        )
         tile, node = _make_slice(name_scope, entry, start, end, 2)
         tiles.append(tile)
         nodes.append(node)

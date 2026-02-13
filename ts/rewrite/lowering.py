@@ -21,7 +21,7 @@ def _ensure_supported_op(node: gs.Node) -> None:
         return
     if node.op == "Conv":
         return
-    raise RuntimeError(f"unsupported op {node.op} for tiled rewrite")
+    assert False, f"unsupported op {node.op} for tiled rewrite"
 
 
 def _build_unary_tiles(
@@ -71,10 +71,9 @@ def _build_unary_const_tiles(
         for idx, inp in enumerate(inputs):
             if idx == main_input_index:
                 continue
-            if not isinstance(inp, gs.Constant):
-                raise RuntimeError(
-                    f"node {node.name or node.op} has unsupported external variable input {inp.name}"
-                )
+            assert isinstance(inp, gs.Constant), (
+                f"node {node.name or node.op} has unsupported external variable input {inp.name}"
+            )
         out_shape = tile.shape if hasattr(tile, "shape") else None
         out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
@@ -120,11 +119,10 @@ def _build_binary_tiles(
         const_dim = values.shape[const_axis]
         if const_dim == 1:
             return constant
-        if const_dim != full_height:
-            raise RuntimeError(
-                f"binary op {node.name or node.op} constant input {constant.name} has split-axis "
-                f"dimension {const_dim}, expected 1 or {full_height}"
-            )
+        assert const_dim == full_height, (
+            f"binary op {node.name or node.op} constant input {constant.name} has split-axis "
+            f"dimension {const_dim}, expected 1 or {full_height}"
+        )
 
         slices = [slice(None)] * const_rank
         slices[const_axis] = slice(start, end)
@@ -141,10 +139,9 @@ def _build_binary_tiles(
         for idx, inp in enumerate(inputs):
             if idx == main_input_index:
                 continue
-            if not isinstance(inp, gs.Constant):
-                raise RuntimeError(
-                    f"binary op {node.name or node.op} requires constant external input; got {inp.name}"
-                )
+            assert isinstance(inp, gs.Constant), (
+                f"binary op {node.name or node.op} requires constant external input; got {inp.name}"
+            )
             inputs[idx] = _tile_constant_input(inp, tile_id, start, end)
 
         out_shape = tile.shape if hasattr(tile, "shape") else None
@@ -182,11 +179,10 @@ def _build_conv_tiles(
     pad_top = pads[0]
 
     h_in = _tensor_height(node.inputs[main_input_index])
-    if len(tiles) != len(in_ranges) or len(tiles) != len(out_ranges):
-        raise RuntimeError(
-            f"Conv tile/range mismatch: tiles={len(tiles)}, in_ranges={len(in_ranges)}, "
-            f"out_ranges={len(out_ranges)}"
-        )
+    assert len(tiles) == len(in_ranges) and len(tiles) == len(out_ranges), (
+        f"Conv tile/range mismatch: tiles={len(tiles)}, in_ranges={len(in_ranges)}, "
+        f"out_ranges={len(out_ranges)}"
+    )
 
     out_tiles = []
     new_nodes: List[gs.Node] = []
@@ -196,10 +192,9 @@ def _build_conv_tiles(
         block_nodes = []
         tile_h = _tensor_height(tile)
         expected_tile_h = in_end - in_start
-        if tile_h != expected_tile_h:
-            raise RuntimeError(
-                f"Conv tile {tile_id} height mismatch: tensor has {tile_h}, range requires {expected_tile_h}"
-            )
+        assert tile_h == expected_tile_h, (
+            f"Conv tile {tile_id} height mismatch: tensor has {tile_h}, range requires {expected_tile_h}"
+        )
         slice_info = _conv_input_slice_for_output(
             y0=y0,
             y1=y1,
@@ -210,11 +205,10 @@ def _build_conv_tiles(
             h_in=h_in,
         )
         expected_in_range = (slice_info.slice_start, slice_info.slice_end)
-        if expected_in_range != (in_start, in_end):
-            raise RuntimeError(
-                f"planned Conv input range mismatch for tile {tile_id}: planned [{in_start},{in_end}), "
-                f"required [{expected_in_range[0]},{expected_in_range[1]})"
-            )
+        assert expected_in_range == (in_start, in_end), (
+            f"planned Conv input range mismatch for tile {tile_id}: planned [{in_start},{in_end}), "
+            f"required [{expected_in_range[0]},{expected_in_range[1]})"
+        )
 
         padded = tile
         if slice_info.pad_top or slice_info.pad_bottom:
@@ -252,10 +246,9 @@ def _build_conv_tiles(
         block_nodes.append(conv_node)
 
         if expected != (y1 - y0):
-            if expected < (y1 - y0):
-                raise RuntimeError(
-                    f"Conv tile output shorter than expected: expected {y1 - y0}, got {expected}"
-                )
+            assert expected >= (y1 - y0), (
+                f"Conv tile output shorter than expected: expected {y1 - y0}, got {expected}"
+            )
             conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
             block_nodes.append(conv_trim_node)
 
@@ -280,8 +273,9 @@ def _build_tiled_op(
             name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx
         )
         return next_tiles, new_nodes, blocks
-    if in_ranges != out_ranges:
-        raise RuntimeError(f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}")
+    assert in_ranges == out_ranges, (
+        f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
+    )
     if node.op in UNARY_OPS:
         next_tiles, new_nodes, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles)
         return next_tiles, new_nodes, blocks
@@ -295,4 +289,4 @@ def _build_tiled_op(
             name_scope, node, orig_index, tiles, in_ranges, main_idx
         )
         return next_tiles, new_nodes, blocks
-    raise RuntimeError(f"unsupported op {node.op}")
+    assert False, f"unsupported op {node.op}"

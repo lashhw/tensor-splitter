@@ -21,15 +21,13 @@ def _as_int_list(value: Any, length: Optional[int] = None) -> Optional[List[int]
         out = [int(v) for v in value]
     else:
         out = [int(value)]
-    if length is not None and len(out) != length:
-        raise RuntimeError(f"expected list of length {length}, got {out}")
+    assert length is None or len(out) == length, f"expected list of length {length}, got {out}"
     return out
 
 
 def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[int]]:
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
-    if auto_pad not in (None, "NOTSET", ""):
-        raise RuntimeError(f"Conv auto_pad {auto_pad} is not supported")
+    assert auto_pad in (None, "NOTSET", ""), f"Conv auto_pad {auto_pad} is not supported"
 
     strides = _as_int_list(_get_attr(node, "strides", [1, 1]), length=2)
     dilations = _as_int_list(_get_attr(node, "dilations", [1, 1]), length=2)
@@ -37,17 +35,15 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[i
     kernel_shape = _as_int_list(_get_attr(node, "kernel_shape", None))
 
     if kernel_shape is None:
-        if len(node.inputs) < 2:
-            raise RuntimeError("Conv node missing weight input for kernel_shape inference")
+        assert len(node.inputs) >= 2, "Conv node missing weight input for kernel_shape inference"
         weight = node.inputs[1]
-        if not hasattr(weight, "shape") or weight.shape is None:
-            raise RuntimeError("Conv weight has no shape for kernel_shape inference")
-        if len(weight.shape) < 4:
-            raise RuntimeError("Conv weight has invalid shape for kernel_shape inference")
+        assert hasattr(weight, "shape") and weight.shape is not None, (
+            "Conv weight has no shape for kernel_shape inference"
+        )
+        assert len(weight.shape) >= 4, "Conv weight has invalid shape for kernel_shape inference"
         kernel_shape = [int(weight.shape[-2]), int(weight.shape[-1])]
 
-    if len(kernel_shape) != 2:
-        raise RuntimeError(f"Only 2D Conv supported; got kernel_shape {kernel_shape}")
+    assert len(kernel_shape) == 2, f"Only 2D Conv supported; got kernel_shape {kernel_shape}"
 
     return kernel_shape, strides, dilations, pads
 

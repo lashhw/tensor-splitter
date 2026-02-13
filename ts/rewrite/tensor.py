@@ -9,8 +9,7 @@ from .naming import NameScope
 
 
 def _require_static_dim(dim: Any, name: str) -> int:
-    if dim is None or isinstance(dim, str):
-        raise RuntimeError(f"{name} must be static; got {dim}")
+    assert dim is not None and not isinstance(dim, str), f"{name} must be static; got {dim}"
     return int(dim)
 
 
@@ -21,10 +20,10 @@ def _tensor_rank(tensor: gs.Tensor) -> int:
 
 
 def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
-    if not hasattr(tensor, "shape") or tensor.shape is None:
-        raise RuntimeError(f"tensor {tensor.name} has no static shape information")
-    if len(tensor.shape) <= axis:
-        raise RuntimeError(f"tensor {tensor.name} rank is too small for axis {axis}")
+    assert hasattr(tensor, "shape") and tensor.shape is not None, (
+        f"tensor {tensor.name} has no static shape information"
+    )
+    assert len(tensor.shape) > axis, f"tensor {tensor.name} rank is too small for axis {axis}"
     return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
 
 
@@ -76,8 +75,7 @@ def _make_concat(
     axis: int,
     shape_hint: Optional[Sequence[Any]] = None,
 ) -> Tuple[gs.Variable, gs.Node]:
-    if not inputs:
-        raise RuntimeError("concat inputs must be non-empty")
+    assert inputs, "concat inputs must be non-empty"
     out_shape = None
     if shape_hint is not None:
         out_shape = list(shape_hint)
@@ -93,8 +91,7 @@ def _make_pad(
     pad_bottom: int,
 ) -> Tuple[gs.Variable, gs.Node]:
     rank = _tensor_rank(data)
-    if rank != 4:
-        raise RuntimeError(f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}")
+    assert rank == 4, f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}"
 
     pads = [0, 0, pad_top, 0, 0, 0, pad_bottom, 0]
     pads_const = _make_constant(name_scope, np.array(pads, dtype=np.int64))

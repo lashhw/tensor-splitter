@@ -15,12 +15,11 @@ class ConvInputSlice:
 
 
 def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
-    if total is None or total <= 0:
-        raise ValueError(f"total must be > 0; got {total}")
-    if tile_count <= 0:
-        raise ValueError(f"tile_count must be > 0; got {tile_count}")
-    if tile_count > total:
-        raise ValueError(f"cannot split dimension {total} into {tile_count} non-empty tiles")
+    assert total is not None and total > 0, f"total must be > 0; got {total}"
+    assert tile_count > 0, f"tile_count must be > 0; got {tile_count}"
+    assert tile_count <= total, (
+        f"cannot split dimension {total} into {tile_count} non-empty tiles"
+    )
 
     base = total // tile_count
     rem = total % tile_count
@@ -47,8 +46,7 @@ def _conv_input_slice_for_output(
     pad_top: int,
     h_in: int,
 ) -> ConvInputSlice:
-    if y1 <= y0:
-        raise ValueError(f"invalid output range [{y0},{y1})")
+    assert y1 > y0, f"invalid output range [{y0},{y1})"
 
     rf = _receptive_field(kernel, dilation)
     x0 = y0 * stride - pad_top
