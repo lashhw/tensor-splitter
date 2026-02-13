@@ -86,7 +86,7 @@ Each group contains:
 Run the test suite:
 
 ```bash
-pytest -q
+pytest
 ```
 
 ## Project layout
