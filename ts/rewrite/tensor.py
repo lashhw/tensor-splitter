@@ -86,45 +86,6 @@ def _make_concat(
     return out, node
 
 
-def _slice_from_tiles(
-    name_scope: NameScope,
-    tiles: Sequence[gs.Variable],
-    ranges: Sequence[tuple[int, int]],
-    start: int,
-    end: int,
-    axis: int,
-) -> Tuple[gs.Variable, List[gs.Node]]:
-    if start >= end:
-        raise RuntimeError(f"invalid slice range [{start},{end})")
-    created_nodes = []
-    pieces = []
-    for tile, (s, e) in zip(tiles, ranges):
-        overlap_start = max(s, start)
-        overlap_end = min(e, end)
-        if overlap_start >= overlap_end:
-            continue
-        rel_start = overlap_start - s
-        rel_end = overlap_end - s
-        if rel_start == 0 and rel_end == (e - s):
-            pieces.append(tile)
-        else:
-            piece, piece_node = _make_slice(name_scope, tile, rel_start, rel_end, axis)
-            created_nodes.append(piece_node)
-            pieces.append(piece)
-
-    if not pieces:
-        raise RuntimeError(f"slice [{start},{end}) does not overlap any tiles")
-    if len(pieces) == 1:
-        return pieces[0], created_nodes
-
-    out_shape = None
-    if hasattr(tiles[0], "shape") and tiles[0].shape is not None:
-        out_shape = _clone_shape_with_height(tiles[0].shape, axis, end - start)
-    concat_out, concat_node = _make_concat(name_scope, pieces, axis, shape_hint=out_shape)
-    created_nodes.append(concat_node)
-    return concat_out, created_nodes
-
-
 def _make_pad(
     name_scope: NameScope,
     data: gs.Tensor,

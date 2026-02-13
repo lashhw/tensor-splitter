@@ -8,8 +8,8 @@ import onnx_graphsurgeon as gs
 from .catalog import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
-from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _slice_from_tiles, _tensor_height
-from .tiling import _conv_input_slice_for_output, _conv_output_height, _partition_ranges
+from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height
+from .tiling import _conv_input_slice_for_output, _conv_output_height
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
@@ -99,7 +99,7 @@ def _build_binary_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
-    ranges: Sequence[Tuple[int, int]],
+    in_ranges: Sequence[Tuple[int, int]],
     nodes: List[gs.Node],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[TileBlock]]:
@@ -108,7 +108,7 @@ def _build_binary_tiles(
 
     main_rank = len(tiles[0].shape) if tiles[0].shape is not None else 0
     split_axis = 2
-    full_height = ranges[-1][1]
+    full_height = _tensor_height(node.inputs[main_input_index])
 
     def _tile_constant_input(constant: gs.Constant, tile_id: int, start: int, end: int) -> gs.Constant:
         values = np.asarray(constant.values)
@@ -135,7 +135,7 @@ def _build_binary_tiles(
     out_tiles = []
     blocks = []
 
-    for tile_id, (tile, (start, end)) in enumerate(zip(tiles, ranges)):
+    for tile_id, (tile, (start, end)) in enumerate(zip(tiles, in_ranges)):
         inputs = list(node.inputs)
         inputs[main_input_index] = tile
         for idx, inp in enumerate(inputs):
@@ -171,31 +171,35 @@ def _build_conv_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
-    ranges: Sequence[Tuple[int, int]],
-    tile_count: int,
+    in_ranges: Sequence[Tuple[int, int]],
+    out_ranges: Sequence[Tuple[int, int]],
     nodes: List[gs.Node],
-) -> Tuple[List[gs.Variable], List[Tuple[int, int]], List[TileBlock]]:
+    main_input_index: int,
+) -> Tuple[List[gs.Variable], List[TileBlock]]:
     kernel_shape, strides, dilations, pads = _conv_params(node)
     k_h = kernel_shape[0]
     s_h = strides[0]
     d_h = dilations[0]
     pad_top = pads[0]
 
-    h_in = ranges[-1][1]
-    actual_h_in = _tensor_height(node.inputs[0])
-    if actual_h_in != h_in:
+    h_in = _tensor_height(node.inputs[main_input_index])
+    if len(tiles) != len(in_ranges) or len(tiles) != len(out_ranges):
         raise RuntimeError(
-            f"Conv input height mismatch: tiles cover {h_in}, but tensor shape is {actual_h_in}"
+            f"Conv tile/range mismatch: tiles={len(tiles)}, in_ranges={len(in_ranges)}, "
+            f"out_ranges={len(out_ranges)}"
         )
-
-    out_height = _tensor_height(node.outputs[0])
-    out_ranges = _partition_ranges(out_height, tile_count)
 
     out_tiles = []
     blocks = []
 
-    for tile_id, (y0, y1) in enumerate(out_ranges):
+    for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
         block_nodes = []
+        tile_h = _tensor_height(tile)
+        expected_tile_h = in_end - in_start
+        if tile_h != expected_tile_h:
+            raise RuntimeError(
+                f"Conv tile {tile_id} height mismatch: tensor has {tile_h}, range requires {expected_tile_h}"
+            )
         slice_info = _conv_input_slice_for_output(
             y0=y0,
             y1=y1,
@@ -205,21 +209,18 @@ def _build_conv_tiles(
             pad_top=pad_top,
             h_in=h_in,
         )
-        sliced, slice_nodes = _slice_from_tiles(
-            name_scope,
-            tiles,
-            ranges,
-            slice_info.slice_start,
-            slice_info.slice_end,
-            axis=2,
-        )
-        block_nodes.extend(slice_nodes)
+        expected_in_range = (slice_info.slice_start, slice_info.slice_end)
+        if expected_in_range != (in_start, in_end):
+            raise RuntimeError(
+                f"planned Conv input range mismatch for tile {tile_id}: planned [{in_start},{in_end}), "
+                f"required [{expected_in_range[0]},{expected_in_range[1]})"
+            )
 
-        padded = sliced
+        padded = tile
         if slice_info.pad_top or slice_info.pad_bottom:
             padded, pad_node = _make_pad(
                 name_scope,
-                sliced,
+                tile,
                 pad_top=slice_info.pad_top,
                 pad_bottom=slice_info.pad_bottom,
             )
@@ -228,10 +229,10 @@ def _build_conv_tiles(
         new_pads = [0, pads[1], 0, pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
         conv_inputs = list(node.inputs)
-        conv_inputs[0] = padded
+        conv_inputs[main_input_index] = padded
 
         expected = _conv_output_height(
-            slice_info.slice_end - slice_info.slice_start,
+            in_end - in_start,
             k_h,
             s_h,
             d_h,
@@ -262,7 +263,7 @@ def _build_conv_tiles(
         out_tiles.append(conv_out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
 
-    return out_tiles, out_ranges, blocks
+    return out_tiles, blocks
 
 
 def _build_tiled_op(
@@ -270,16 +271,30 @@ def _build_tiled_op(
     node: gs.Node,
     orig_index: int,
     tiles: Sequence[gs.Variable],
-    ranges: Sequence[Tuple[int, int]],
-    tile_count: int,
+    in_ranges: Sequence[Tuple[int, int]],
+    out_ranges: Sequence[Tuple[int, int]],
     nodes: List[gs.Node],
     main_idx: int,
-) -> Tuple[List[gs.Variable], Sequence[Tuple[int, int]], List[TileBlock]]:
+) -> Tuple[List[gs.Variable], List[TileBlock]]:
     if node.op == "Conv":
-        return _build_conv_tiles(name_scope, node, orig_index, tiles, ranges, tile_count, nodes)
+        next_tiles, blocks = _build_conv_tiles(
+            name_scope,
+            node,
+            orig_index,
+            tiles,
+            in_ranges,
+            out_ranges,
+            nodes,
+            main_idx,
+        )
+        return next_tiles, blocks
+    if in_ranges != out_ranges:
+        raise RuntimeError(
+            f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
+        )
     if node.op in UNARY_OPS:
         next_tiles, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles, nodes)
-        return next_tiles, ranges, blocks
+        return next_tiles, blocks
     if node.op in UNARY_CONST_OPS:
         next_tiles, blocks = _build_unary_const_tiles(
             name_scope,
@@ -289,16 +304,16 @@ def _build_tiled_op(
             nodes,
             main_idx,
         )
-        return next_tiles, ranges, blocks
+        return next_tiles, blocks
     if node.op in BINARY_OPS:
         next_tiles, blocks = _build_binary_tiles(
             name_scope,
             node,
             orig_index,
             tiles,
-            ranges,
+            in_ranges,
             nodes,
             main_idx,
         )
-        return next_tiles, ranges, blocks
+        return next_tiles, blocks
     raise RuntimeError(f"unsupported op {node.op}")

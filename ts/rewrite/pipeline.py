@@ -45,6 +45,11 @@ def _apply_group(
     new_nodes: List[gs.Node],
     concat_out: gs.Variable,
 ) -> None:
+    node_a = orig_nodes[group_cfg.node_range[0]]
+    node_b = orig_nodes[group_cfg.node_range[1]]
+    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
+    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
+
     for consumer in list(group_info.exit_tensor.outputs):
         for idx, inp in enumerate(consumer.inputs):
             if inp is group_info.exit_tensor:
@@ -57,11 +62,6 @@ def _apply_group(
     for node in group_info.nodes:
         node.inputs = []
         node.outputs = []
-
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
-    start_pos = graph.nodes.index(node_a)
-    end_pos = graph.nodes.index(node_b)
 
     graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
 

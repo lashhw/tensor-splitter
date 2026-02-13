@@ -88,6 +88,34 @@ def _make_add_with_height_constant_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
+def _make_two_conv_model():
+    inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 10, 6])
+    w1 = gs.Constant("W1", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
+    b1 = gs.Constant("B1", values=np.random.randn(4).astype(np.float32))
+    w2 = gs.Constant("W2", values=np.random.randn(4, 4, 3, 3).astype(np.float32))
+    b2 = gs.Constant("B2", values=np.random.randn(4).astype(np.float32))
+
+    conv1_out = gs.Variable("conv1_out", dtype=np.float32, shape=[1, 4, 10, 6])
+    conv2_out = gs.Variable("conv2_out", dtype=np.float32, shape=[1, 4, 10, 6])
+
+    conv1 = gs.Node(
+        op="Conv",
+        inputs=[inp, w1, b1],
+        outputs=[conv1_out],
+        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+    )
+    conv2 = gs.Node(
+        op="Conv",
+        inputs=[conv1_out, w2, b2],
+        outputs=[conv2_out],
+        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+    )
+
+    graph = gs.Graph(nodes=[conv1, conv2], inputs=[inp], outputs=[conv2_out])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
 def test_binary_op_rewrite_slices_height_dependent_constants():
     model = _make_add_with_height_constant_model()
     groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
@@ -105,7 +133,35 @@ def test_binary_op_rewrite_slices_height_dependent_constants():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
+def test_multi_conv_rewrite_matches_and_uses_only_final_concat():
+    model = _make_two_conv_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 1),
+            tile_count=2,
+            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1)],
+        )
+    ]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 10, 6)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+    graph = gs.import_onnx(rewritten)
+    concat_nodes = [node for node in graph.nodes if node.op == "Concat"]
+    assert len(concat_nodes) == 1
+
+
 if __name__ == "__main__":
     test_chain_rewrite_matches()
     test_chain_rewrite_rejects_dependency_violating_execution_order()
     test_binary_op_rewrite_slices_height_dependent_constants()
+    test_multi_conv_rewrite_matches_and_uses_only_final_concat()

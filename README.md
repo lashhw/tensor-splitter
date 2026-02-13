@@ -7,8 +7,9 @@ This tool rewrites ONNX models so selected node ranges run as tiles instead of f
 Given an input model and a split plan, the tool:
 
 - Splits the chain input tensor into multiple tiles.
-- Rewrites supported operators to run per tile.
-- Inserts/adjusts halo overlap for convolution correctness.
+- Back-propagates required ranges from group output to build per-tile entry halos.
+- Rewrites supported operators to run per tile with no inter-tile communication inside the group.
+- Handles convolution border padding locally per tile.
 - Reassembles the tiled results back into the original tensor layout.
 
 ## Requirements
