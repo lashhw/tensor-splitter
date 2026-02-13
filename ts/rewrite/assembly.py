@@ -70,9 +70,7 @@ def _build_entry_tiles(
 
     for tile_id, (start, end) in enumerate(entry_ranges):
         if start < 0 or end < 0 or start > end or end > h_in:
-            raise RuntimeError(
-                f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
-            )
+            raise RuntimeError(f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}")
         tile, node = _make_slice(name_scope, entry, start, end, 2)
         tiles.append(tile)
         nodes.append(node)
