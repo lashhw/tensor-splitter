@@ -1,6 +1,13 @@
+from pathlib import Path
+import sys
+
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from ts.config import GroupConfig
 from ts.rewrite import rewrite_model
@@ -37,3 +44,7 @@ def test_small_conv_rewrite_matches():
     out_new = sess_new.run(None, {"input": inp})[0]
 
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
+if __name__ == "__main__":
+    test_small_conv_rewrite_matches()

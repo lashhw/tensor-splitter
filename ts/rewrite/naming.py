@@ -6,8 +6,6 @@ from typing import Iterable, Set
 
 @dataclass
 class NameScope:
-    """Generates graph-unique names for rewritten tensors and nodes."""
-
     existing: Set[str]
     counter: int = 0
 

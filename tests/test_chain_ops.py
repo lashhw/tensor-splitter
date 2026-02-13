@@ -1,7 +1,13 @@
+from pathlib import Path
+import sys
+
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from ts.config import GroupConfig
 from ts.rewrite import rewrite_model
@@ -64,5 +70,14 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
         )
     ]
 
-    with pytest.raises(ValueError, match="execution_order is not topologically valid"):
+    try:
         rewrite_model(model, groups)
+    except ValueError as exc:
+        assert "execution_order is not topologically valid" in str(exc)
+    else:
+        raise AssertionError("rewrite_model should reject dependency-violating execution_order")
+
+
+if __name__ == "__main__":
+    test_chain_rewrite_matches()
+    test_chain_rewrite_rejects_dependency_violating_execution_order()
