@@ -116,6 +116,38 @@ def _make_two_conv_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
+def _make_downsample_conv_chain_with_padding_model():
+    rng = np.random.default_rng(1)
+    inp = gs.Variable("input", dtype=np.float32, shape=[1, 1, 8, 15])
+
+    w0 = gs.Constant("W0", values=rng.standard_normal((3, 1, 1, 4)).astype(np.float32))
+    b0 = gs.Constant("B0", values=rng.standard_normal(3).astype(np.float32))
+    y0 = gs.Variable("y0", dtype=np.float32, shape=[1, 3, 6, 8])
+    conv0 = gs.Node(
+        op="Conv",
+        inputs=[inp, w0, b0],
+        outputs=[y0],
+        attrs={"pads": [0, 0, 3, 3], "strides": [2, 2], "dilations": [2, 1]},
+    )
+
+    r0 = gs.Variable("r0", dtype=np.float32, shape=[1, 3, 6, 8])
+    relu0 = gs.Node(op="Relu", inputs=[y0], outputs=[r0])
+
+    w1 = gs.Constant("W1", values=rng.standard_normal((3, 3, 1, 4)).astype(np.float32))
+    b1 = gs.Constant("B1", values=rng.standard_normal(3).astype(np.float32))
+    y1 = gs.Variable("y1", dtype=np.float32, shape=[1, 3, 5, 4])
+    conv1 = gs.Node(
+        op="Conv",
+        inputs=[r0, w1, b1],
+        outputs=[y1],
+        attrs={"pads": [0, 0, 3, 3], "strides": [2, 2], "dilations": [2, 1]},
+    )
+
+    graph = gs.Graph(nodes=[conv0, relu0, conv1], inputs=[inp], outputs=[y1])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
 def test_binary_op_rewrite_slices_height_dependent_constants():
     model = _make_add_with_height_constant_model()
     groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
@@ -160,8 +192,36 @@ def test_multi_conv_rewrite_matches_and_uses_only_final_concat():
     assert len(concat_nodes) == 1
 
 
+def test_chain_rewrite_handles_empty_intermediate_ranges():
+    model = _make_downsample_conv_chain_with_padding_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 2),
+            tile_count=5,
+            execution_order=[
+                (node_idx, tile_id)
+                for node_idx in range(3)
+                for tile_id in range(5)
+            ],
+        )
+    ]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 1, 8, 15)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
 if __name__ == "__main__":
     test_chain_rewrite_matches()
     test_chain_rewrite_rejects_dependency_violating_execution_order()
     test_binary_op_rewrite_slices_height_dependent_constants()
     test_multi_conv_rewrite_matches_and_uses_only_final_concat()
+    test_chain_rewrite_handles_empty_intermediate_ranges()

@@ -46,16 +46,26 @@ def _conv_input_slice_for_output(
     pad_top: int,
     h_in: int,
 ) -> ConvInputSlice:
-    assert y1 > y0, f"invalid output range [{y0},{y1})"
+    assert y1 >= y0, f"invalid output range [{y0},{y1})"
     assert h_in >= 0, f"invalid input height {h_in}"
 
     rf = _receptive_field(kernel, dilation)
-    x0 = y0 * stride - pad_top
-    x1 = (y1 - 1) * stride - pad_top + rf
+
+    if y1 == y0:
+        # Empty output tiles can appear while back-propagating ranges through
+        # strided/padded Conv chains. Plan a one-step "placeholder" receptive
+        # field here; downstream lowering trims Conv output back to zero length.
+        x0 = y0 * stride - pad_top
+        x1 = y0 * stride - pad_top + rf
+    else:
+        x0 = y0 * stride - pad_top
+        x1 = (y1 - 1) * stride - pad_top + rf
+
     # Clamp both bounds into [0, h_in] to avoid inverted ranges when output
     # tiles map fully outside the original tensor and rely only on padding.
     slice_start = min(max(0, x0), h_in)
     slice_end = min(max(0, x1), h_in)
+
     pad_top_local = max(0, -x0)
     pad_bottom_local = max(0, x1 - h_in)
 
