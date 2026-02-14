@@ -31,6 +31,17 @@ def _make_add_one_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
+def _make_two_input_sub_model(swap_inputs: bool = False):
+    a = gs.Variable("a", dtype=np.float32, shape=[1, 1, 2, 2])
+    b = gs.Variable("b", dtype=np.float32, shape=[1, 1, 2, 2])
+    out = gs.Variable("out", dtype=np.float32, shape=[1, 1, 2, 2])
+    inputs = [b, a] if swap_inputs else [a, b]
+    node = gs.Node(op="Sub", inputs=inputs, outputs=[out])
+    graph = gs.Graph(nodes=[node], inputs=[a, b], outputs=[out])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
 def test_verify_models_returns_true_for_equal_models():
     model = _make_identity_model()
     ok, diffs = verify_models(model, model)
@@ -42,6 +53,16 @@ def test_verify_models_returns_true_for_equal_models():
 def test_verify_models_returns_false_for_numerical_mismatch():
     original = _make_identity_model()
     rewritten = _make_add_one_model()
+
+    ok, diffs = verify_models(original, rewritten)
+
+    assert not ok
+    assert diffs["out"] > 0.0
+
+
+def test_verify_models_uses_distinct_random_inputs_per_input_tensor():
+    original = _make_two_input_sub_model(swap_inputs=False)
+    rewritten = _make_two_input_sub_model(swap_inputs=True)
 
     ok, diffs = verify_models(original, rewritten)
 

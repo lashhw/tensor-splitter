@@ -7,7 +7,7 @@ import onnx
 import onnxruntime as ort
 
 
-def _make_input_array(name: str, value_info: onnx.ValueInfoProto) -> np.ndarray:
+def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random.Generator) -> np.ndarray:
     tensor_type = value_info.type.tensor_type
     shape: list[int | None] = []
     for dim in tensor_type.shape.dim:
@@ -26,7 +26,6 @@ def _make_input_array(name: str, value_info: onnx.ValueInfoProto) -> np.ndarray:
     assert dtype is not None, f"input {name} has unsupported dtype {tensor_type.elem_type}"
 
     static_shape = tuple(int(dim) for dim in shape)
-    rng = np.random.default_rng(0)
     data = rng.standard_normal(size=static_shape).astype(dtype)
     return data
 
@@ -37,10 +36,11 @@ def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tupl
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
 
     inputs: Dict[str, np.ndarray] = {}
+    rng = np.random.default_rng(0)
     for inp in original.graph.input:
         if any(init.name == inp.name for init in original.graph.initializer):
             continue
-        inputs[inp.name] = _make_input_array(inp.name, inp)
+        inputs[inp.name] = _make_input_array(inp.name, inp, rng)
 
     orig_outs = sess_original.run(None, inputs)
     new_outs = sess_rewritten.run(None, inputs)
