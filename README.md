@@ -58,7 +58,7 @@ python -m ts.cli INPUT CONFIG OUTPUT [--no-verify]
 
 ## Configuration format
 
-The config must be a **JSON list** of group entries.
+The config must be a JSON list of group entries.
 
 Each group contains:
 
