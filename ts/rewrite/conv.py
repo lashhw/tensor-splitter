@@ -12,16 +12,13 @@ def _get_attr(node: gs.Node, name: str, default: Any = None) -> Any:
     return node.attrs.get(name, default)
 
 
-def _as_int_list(value: Any, length: Optional[int] = None) -> Optional[List[int]]:
-    if value is None:
-        return None
+def _as_int_list(value: Any, *, name: str, length: Optional[int] = None) -> List[int]:
+    assert value is not None, f"Conv attribute {name} is required"
     if isinstance(value, np.ndarray):
         value = value.tolist()
-    if isinstance(value, (tuple, list)):
-        out = [int(v) for v in value]
-    else:
-        out = [int(value)]
-    assert length is None or len(out) == length, f"expected list of length {length}, got {out}"
+    assert isinstance(value, (tuple, list)), f"Conv attribute {name} must be a list/tuple; got {value!r}"
+    out = [int(v) for v in value]
+    assert length is None or len(out) == length, f"Conv attribute {name} must have length {length}; got {out}"
     return out
 
 
@@ -29,21 +26,10 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[i
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     assert auto_pad in (None, "NOTSET", ""), f"Conv auto_pad {auto_pad} is not supported"
 
-    strides = _as_int_list(_get_attr(node, "strides", [1, 1]), length=2)
-    dilations = _as_int_list(_get_attr(node, "dilations", [1, 1]), length=2)
-    pads = _as_int_list(_get_attr(node, "pads", [0, 0, 0, 0]), length=4)
-    kernel_shape = _as_int_list(_get_attr(node, "kernel_shape", None))
-
-    if kernel_shape is None:
-        assert len(node.inputs) >= 2, "Conv node missing weight input for kernel_shape inference"
-        weight = node.inputs[1]
-        assert hasattr(weight, "shape") and weight.shape is not None, (
-            "Conv weight has no shape for kernel_shape inference"
-        )
-        assert len(weight.shape) >= 4, "Conv weight has invalid shape for kernel_shape inference"
-        kernel_shape = [int(weight.shape[-2]), int(weight.shape[-1])]
-
-    assert len(kernel_shape) == 2, f"Only 2D Conv supported; got kernel_shape {kernel_shape}"
+    kernel_shape = _as_int_list(_get_attr(node, "kernel_shape"), name="kernel_shape", length=2)
+    strides = _as_int_list(_get_attr(node, "strides"), name="strides", length=2)
+    dilations = _as_int_list(_get_attr(node, "dilations"), name="dilations", length=2)
+    pads = _as_int_list(_get_attr(node, "pads"), name="pads", length=4)
 
     return kernel_shape, strides, dilations, pads
 

@@ -27,7 +27,12 @@ def _make_chain_model():
         op="Conv",
         inputs=[inp, weight, bias],
         outputs=[conv_out],
-        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+        },
     )
     relu = gs.Node(op="Relu", inputs=[conv_out], outputs=[relu_out])
     add = gs.Node(op="Add", inputs=[relu_out, add_const], outputs=[add_out])
@@ -102,13 +107,23 @@ def _make_two_conv_model():
         op="Conv",
         inputs=[inp, w1, b1],
         outputs=[conv1_out],
-        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+        },
     )
     conv2 = gs.Node(
         op="Conv",
         inputs=[conv1_out, w2, b2],
         outputs=[conv2_out],
-        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+        },
     )
 
     graph = gs.Graph(nodes=[conv1, conv2], inputs=[inp], outputs=[conv2_out])
@@ -127,7 +142,12 @@ def _make_downsample_conv_chain_with_padding_model():
         op="Conv",
         inputs=[inp, w0, b0],
         outputs=[y0],
-        attrs={"pads": [0, 0, 3, 3], "strides": [2, 2], "dilations": [2, 1]},
+        attrs={
+            "kernel_shape": [1, 4],
+            "pads": [0, 0, 3, 3],
+            "strides": [2, 2],
+            "dilations": [2, 1],
+        },
     )
 
     r0 = gs.Variable("r0", dtype=np.float32, shape=[1, 3, 6, 8])
@@ -140,7 +160,12 @@ def _make_downsample_conv_chain_with_padding_model():
         op="Conv",
         inputs=[r0, w1, b1],
         outputs=[y1],
-        attrs={"pads": [0, 0, 3, 3], "strides": [2, 2], "dilations": [2, 1]},
+        attrs={
+            "kernel_shape": [1, 4],
+            "pads": [0, 0, 3, 3],
+            "strides": [2, 2],
+            "dilations": [2, 1],
+        },
     )
 
     graph = gs.Graph(nodes=[conv0, relu0, conv1], inputs=[inp], outputs=[y1])

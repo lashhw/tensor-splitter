@@ -22,7 +22,12 @@ def _make_conv_model():
         op="Conv",
         inputs=[inp, weight, bias],
         outputs=[conv_out],
-        attrs={"pads": [1, 1, 1, 1], "strides": [1, 1]},
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+        },
     )
     graph = gs.Graph(nodes=[conv], inputs=[inp], outputs=[conv_out])
     model = gs.export_onnx(graph)
@@ -38,7 +43,12 @@ def _make_padding_heavy_conv_model():
         op="Conv",
         inputs=[inp, weight, bias],
         outputs=[conv_out],
-        attrs={"pads": [1, 1, 2, 1], "strides": [2, 1]},
+        attrs={
+            "kernel_shape": [1, 3],
+            "pads": [1, 1, 2, 1],
+            "strides": [2, 1],
+            "dilations": [1, 1],
+        },
     )
     graph = gs.Graph(nodes=[conv], inputs=[inp], outputs=[conv_out])
     model = gs.export_onnx(graph)
