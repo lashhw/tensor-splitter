@@ -10,7 +10,7 @@ For each configured node range, it:
 
 1. Splits the range input tensor into `tile_count` tiles.
 2. Computes each tile's required Conv input range so results match the original full-tensor run.
-3. Rewrites supported operators in that range to consume and produce per-tile tensors.
+3. Rewrites operators in that range to consume and produce per-tile tensors.
 4. Stitches tile outputs back into the original tensor layout.
 
 The rewritten model keeps the same external I/O interface, and the CLI verifies numerical equivalence with ONNX Runtime by default.
