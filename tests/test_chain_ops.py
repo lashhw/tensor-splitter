@@ -17,11 +17,14 @@ def _make_chain_model():
     inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 10, 6])
     weight = gs.Constant("W", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
     bias = gs.Constant("B", values=np.random.randn(4).astype(np.float32))
-    add_const = gs.Constant("C", values=np.random.randn(1, 4, 1, 1).astype(np.float32))
+    scale = gs.Constant("S", values=np.random.randn(4).astype(np.float32))
+    bn_bias = gs.Constant("BB", values=np.random.randn(4).astype(np.float32))
+    mean = gs.Constant("M", values=np.random.randn(4).astype(np.float32))
+    var = gs.Constant("V", values=np.abs(np.random.randn(4)).astype(np.float32) + 1e-3)
 
     conv_out = gs.Variable("conv_out", dtype=np.float32, shape=[1, 4, 10, 6])
     relu_out = gs.Variable("relu_out", dtype=np.float32, shape=[1, 4, 10, 6])
-    add_out = gs.Variable("add_out", dtype=np.float32, shape=[1, 4, 10, 6])
+    bn_out = gs.Variable("bn_out", dtype=np.float32, shape=[1, 4, 10, 6])
 
     conv = gs.Node(
         op="Conv",
@@ -35,9 +38,14 @@ def _make_chain_model():
         },
     )
     relu = gs.Node(op="Relu", inputs=[conv_out], outputs=[relu_out])
-    add = gs.Node(op="Add", inputs=[relu_out, add_const], outputs=[add_out])
+    bn = gs.Node(
+        op="BatchNormalization",
+        inputs=[relu_out, scale, bn_bias, mean, var],
+        outputs=[bn_out],
+        attrs={"epsilon": 1e-5},
+    )
 
-    graph = gs.Graph(nodes=[conv, relu, add], inputs=[inp], outputs=[add_out])
+    graph = gs.Graph(nodes=[conv, relu, bn], inputs=[inp], outputs=[bn_out])
     model = gs.export_onnx(graph)
     return onnx.shape_inference.infer_shapes(model)
 
@@ -83,12 +91,31 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
         assert False, "rewrite_model should reject dependency-violating execution_order"
 
 
-def _make_add_with_height_constant_model():
+def _make_chain_with_add_constant_model():
     inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 10, 6])
-    add_const = gs.Constant("C_height", values=np.random.randn(1, 3, 10, 1).astype(np.float32))
-    out = gs.Variable("out", dtype=np.float32, shape=[1, 3, 10, 6])
-    add = gs.Node(op="Add", inputs=[inp, add_const], outputs=[out])
-    graph = gs.Graph(nodes=[add], inputs=[inp], outputs=[out])
+    weight = gs.Constant("W_bad", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
+    bias = gs.Constant("B_bad", values=np.random.randn(4).astype(np.float32))
+    add_const = gs.Constant("C_bad", values=np.random.randn(1, 4, 1, 1).astype(np.float32))
+
+    conv_out = gs.Variable("conv_bad_out", dtype=np.float32, shape=[1, 4, 10, 6])
+    relu_out = gs.Variable("relu_bad_out", dtype=np.float32, shape=[1, 4, 10, 6])
+    out = gs.Variable("add_bad_out", dtype=np.float32, shape=[1, 4, 10, 6])
+
+    conv = gs.Node(
+        op="Conv",
+        inputs=[inp, weight, bias],
+        outputs=[conv_out],
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+        },
+    )
+    relu = gs.Node(op="Relu", inputs=[conv_out], outputs=[relu_out])
+    add = gs.Node(op="Add", inputs=[relu_out, add_const], outputs=[out])
+
+    graph = gs.Graph(nodes=[conv, relu, add], inputs=[inp], outputs=[out])
     model = gs.export_onnx(graph)
     return onnx.shape_inference.infer_shapes(model)
 
@@ -173,21 +200,21 @@ def _make_downsample_conv_chain_with_padding_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
-def test_binary_op_rewrite_slices_height_dependent_constants():
-    model = _make_add_with_height_constant_model()
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
-    rewritten = rewrite_model(model, groups)
-
-    import onnxruntime as ort
-
-    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
-    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
-    rng = np.random.default_rng(0)
-    inp = rng.standard_normal((1, 3, 10, 6)).astype(np.float32)
-    out_orig = sess_orig.run(None, {"input": inp})[0]
-    out_new = sess_new.run(None, {"input": inp})[0]
-
-    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+def test_chain_rewrite_rejects_unsupported_add_op():
+    model = _make_chain_with_add_constant_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 2),
+            tile_count=2,
+            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
+        )
+    ]
+    try:
+        rewrite_model(model, groups)
+    except AssertionError as exc:
+        assert "unsupported op Add" in str(exc)
+    else:
+        assert False, "rewrite_model should reject Add in tiled groups"
 
 
 def test_multi_conv_rewrite_matches_and_uses_only_final_concat():
@@ -247,6 +274,6 @@ def test_chain_rewrite_handles_empty_intermediate_ranges():
 if __name__ == "__main__":
     test_chain_rewrite_matches()
     test_chain_rewrite_rejects_dependency_violating_execution_order()
-    test_binary_op_rewrite_slices_height_dependent_constants()
+    test_chain_rewrite_rejects_unsupported_add_op()
     test_multi_conv_rewrite_matches_and_uses_only_final_concat()
     test_chain_rewrite_handles_empty_intermediate_ranges()

@@ -19,13 +19,7 @@ class TileBlock:
             order_map[id(node)] = order
 
 
-UNARY_OPS = {
-    "Relu",
-    "Sigmoid",
-    "Tanh",
-    "Identity",
-}
+UNARY_OPS = {"Relu"}
 UNARY_CONST_OPS = {
     "BatchNormalization",
 }
-BINARY_OPS = {"Add"}

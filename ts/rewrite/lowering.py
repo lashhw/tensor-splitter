@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import List, Sequence, Tuple
 
-import numpy as np
 import onnx_graphsurgeon as gs
 
-from .catalog import BINARY_OPS, UNARY_CONST_OPS, UNARY_OPS, TileBlock
+from .catalog import UNARY_CONST_OPS, UNARY_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
 from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height
@@ -16,8 +15,6 @@ def _ensure_supported_op(node: gs.Node) -> None:
     if node.op in UNARY_OPS:
         return
     if node.op in UNARY_CONST_OPS:
-        return
-    if node.op in BINARY_OPS:
         return
     if node.op == "Conv":
         return
@@ -74,76 +71,6 @@ def _build_unary_const_tiles(
             assert isinstance(inp, gs.Constant), (
                 f"node {node.name or node.op} has unsupported external variable input {inp.name}"
             )
-        out_shape = tile.shape if hasattr(tile, "shape") else None
-        out = gs.Variable(
-            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
-            dtype=tile.dtype,
-            shape=out_shape,
-        )
-        new_node = gs.Node(
-            op=node.op,
-            inputs=inputs,
-            outputs=[out],
-            attrs=dict(node.attrs) if node.attrs else {},
-        )
-        new_nodes.append(new_node)
-        out_tiles.append(out)
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
-
-    return out_tiles, new_nodes, blocks
-
-
-def _build_binary_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: Sequence[gs.Variable],
-    in_ranges: Sequence[Tuple[int, int]],
-    main_input_index: int,
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    if not tiles:
-        return [], [], []
-
-    main_rank = len(tiles[0].shape) if tiles[0].shape is not None else 0
-    split_axis = 2
-    full_height = _tensor_height(node.inputs[main_input_index])
-
-    def _tile_constant_input(constant: gs.Constant, tile_id: int, start: int, end: int) -> gs.Constant:
-        values = np.asarray(constant.values)
-        const_rank = values.ndim
-        const_axis = split_axis + (const_rank - main_rank)
-
-        if const_axis < 0 or const_axis >= const_rank:
-            return constant
-
-        const_dim = values.shape[const_axis]
-        if const_dim == 1:
-            return constant
-        assert const_dim == full_height, (
-            f"binary op {node.name or node.op} constant input {constant.name} has split-axis "
-            f"dimension {const_dim}, expected 1 or {full_height}"
-        )
-
-        slices = [slice(None)] * const_rank
-        slices[const_axis] = slice(start, end)
-        tile_values = np.ascontiguousarray(values[tuple(slices)])
-        return gs.Constant(name_scope.make(f"{constant.name}_tile{tile_id}"), values=tile_values)
-
-    out_tiles = []
-    new_nodes: List[gs.Node] = []
-    blocks = []
-
-    for tile_id, (tile, (start, end)) in enumerate(zip(tiles, in_ranges)):
-        inputs = list(node.inputs)
-        inputs[main_input_index] = tile
-        for idx, inp in enumerate(inputs):
-            if idx == main_input_index:
-                continue
-            assert isinstance(inp, gs.Constant), (
-                f"binary op {node.name or node.op} requires constant external input; got {inp.name}"
-            )
-            inputs[idx] = _tile_constant_input(inp, tile_id, start, end)
-
         out_shape = tile.shape if hasattr(tile, "shape") else None
         out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
@@ -282,11 +209,6 @@ def _build_tiled_op(
     if node.op in UNARY_CONST_OPS:
         next_tiles, new_nodes, blocks = _build_unary_const_tiles(
             name_scope, node, orig_index, tiles, main_idx
-        )
-        return next_tiles, new_nodes, blocks
-    if node.op in BINARY_OPS:
-        next_tiles, new_nodes, blocks = _build_binary_tiles(
-            name_scope, node, orig_index, tiles, in_ranges, main_idx
         )
         return next_tiles, new_nodes, blocks
     assert False, f"unsupported op {node.op}"
