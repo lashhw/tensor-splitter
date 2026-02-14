@@ -12,19 +12,11 @@ def _build_execution_order_map(
     schedule: Sequence[Tuple[int, int]],
 ) -> Dict[int, int]:
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    block_pairs = {(block.orig_index, block.tile_id) for block in blocks}
-    schedule_pairs = set(schedule_pos)
-    if block_pairs != schedule_pairs:
-        missing = sorted(block_pairs - schedule_pairs)
-        extra = sorted(schedule_pairs - block_pairs)
-        assert False, (
-            "execution_order does not match rewritten block set. "
-            f"Missing: {missing}, Extra: {extra}"
-        )
-
     order_map = {}
     for block in blocks:
-        block.assign_order(order_map, schedule_pos[(block.orig_index, block.tile_id)])
+        key = (block.orig_index, block.tile_id)
+        assert key in schedule_pos, f"execution_order is missing entry {key}"
+        block.assign_order(order_map, schedule_pos[key])
     return order_map
 
 

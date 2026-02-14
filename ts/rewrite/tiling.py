@@ -10,8 +10,6 @@ class ConvInputSlice:
     slice_end: int
     pad_top: int
     pad_bottom: int
-    x0: int
-    x1: int
 
 
 def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
@@ -66,8 +64,6 @@ def _conv_input_slice_for_output(
         slice_end=slice_end,
         pad_top=pad_top_local,
         pad_bottom=pad_bottom_local,
-        x0=x0,
-        x1=x1,
     )
 
 

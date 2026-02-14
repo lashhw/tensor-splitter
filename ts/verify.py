@@ -45,8 +45,9 @@ def verify_model(
 
     inputs: Dict[str, np.ndarray] = {}
     rng = np.random.default_rng(0)
+    initializer_names = {init.name for init in original.graph.initializer}
     for inp in original.graph.input:
-        if any(init.name == inp.name for init in original.graph.initializer):
+        if inp.name in initializer_names:
             continue
         inputs[inp.name] = _make_input_array(inp.name, inp, rng)
 

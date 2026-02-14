@@ -14,7 +14,6 @@ class NameScope:
         return cls(set(existing))
 
     def make(self, base: str) -> str:
-        base = base.replace(":", "_")
         name = f"{base}_{self.counter}"
         self.counter += 1
         while name in self.existing:
