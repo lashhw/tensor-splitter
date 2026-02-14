@@ -4,7 +4,7 @@ from typing import List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from .catalog import SUPPORTED_GROUP_OPS, SUPPORTED_NON_CONV_OPS, TileBlock
+from .catalog import SUPPORTED_GROUP_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
 from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height

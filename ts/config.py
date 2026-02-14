@@ -22,9 +22,7 @@ def _to_int(value: object, field: str) -> int:
 
 
 def _to_tuple_pair(value: object, field: str) -> IndexPair:
-    if isinstance(value, list):
-        value = tuple(value)
-    assert isinstance(value, tuple) and len(value) == 2, (
+    assert isinstance(value, (list, tuple)) and len(value) == 2, (
         f"{field} must be a tuple/list of length 2; got {value!r}"
     )
     return _to_int(value[0], f"{field}[0]"), _to_int(value[1], f"{field}[1]")

@@ -24,12 +24,7 @@ def _build_execution_order_map(
 
     order_map = {}
     for block in blocks:
-        order = schedule_pos.get((block.orig_index, block.tile_id))
-        assert order is not None, (
-            "execution_order is missing entry for rewritten block "
-            f"{(block.orig_index, block.tile_id)}"
-        )
-        block.assign_order(order_map, order)
+        block.assign_order(order_map, schedule_pos[(block.orig_index, block.tile_id)])
     return order_map
 
 
