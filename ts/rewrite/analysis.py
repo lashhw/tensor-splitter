@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -12,7 +12,7 @@ class GroupInfo:
     nodes: Sequence[gs.Node]
     entry_tensor: gs.Variable
     exit_tensor: gs.Variable
-    main_input_index: Dict[int, int]
+    main_input_indices: List[int]
 
 
 def _is_constant(tensor: gs.Tensor) -> bool:
@@ -30,7 +30,7 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
     )
 
     group_nodes = nodes[a : b + 1]
-    main_input_index = {}
+    main_input_indices = []
 
     first = group_nodes[0]
     entry_candidates = []
@@ -43,7 +43,7 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
         "group entry node must have exactly one non-constant input from outside the group"
     )
 
-    main_input_index[id(first)] = entry_candidates[0][0]
+    main_input_indices.append(entry_candidates[0][0])
     entry_tensor = entry_candidates[0][1]
 
     for prev, node in zip(group_nodes[:-1], group_nodes[1:]):
@@ -72,7 +72,7 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
 
         if main_idx is None:
             assert False, f"node {_node_label(node)} must have exactly one data input from within group"
-        main_input_index[id(node)] = main_idx
+        main_input_indices.append(main_idx)
 
     for node in group_nodes:
         assert len(node.outputs) == 1, f"node {_node_label(node)} must have a single output"
@@ -91,5 +91,5 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
         nodes=group_nodes,
         entry_tensor=entry_tensor,
         exit_tensor=exit_tensor,
-        main_input_index=main_input_index,
+        main_input_indices=main_input_indices,
     )

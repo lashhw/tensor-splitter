@@ -45,14 +45,15 @@ def _make_slice(
     end: int,
     axis: int,
 ) -> Tuple[gs.Variable, gs.Node]:
+    assert hasattr(data, "shape") and data.shape is not None, (
+        f"Slice expects static tensor shape for {data.name}"
+    )
     starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
     ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
     steps = _make_constant(name_scope, np.array([1], dtype=np.int64))
 
-    out_shape = None
-    if hasattr(data, "shape") and data.shape is not None:
-        out_shape = _clone_shape_with_height(data.shape, axis, end - start)
+    out_shape = _clone_shape_with_height(data.shape, axis, end - start)
     out = gs.Variable(
         name_scope.make(f"{data.name}_slice"),
         dtype=data.dtype,

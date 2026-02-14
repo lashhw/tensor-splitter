@@ -31,7 +31,7 @@ def _plan_stage_ranges(
     for stage_idx in range(stage_count - 2, -1, -1):
         node = group_info.nodes[stage_idx]
         out_ranges = stage_ranges[stage_idx + 1]
-        main_idx = group_info.main_input_index[id(node)]
+        main_idx = group_info.main_input_indices[stage_idx]
 
         if node.op != "Conv":
             h_in = _tensor_height(node.inputs[main_idx])
@@ -92,7 +92,7 @@ def _build_group_tiles(
     blocks = []
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
-        main_idx = group_info.main_input_index[id(node)]
+        main_idx = group_info.main_input_indices[stage_idx]
         in_ranges = stage_ranges[stage_idx]
         out_ranges = stage_ranges[stage_idx + 1]
         tiles, op_nodes, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx)
