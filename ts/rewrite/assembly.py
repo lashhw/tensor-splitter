@@ -63,18 +63,12 @@ def _build_entry_tiles(
     entry: gs.Variable,
     entry_ranges: Sequence[Tuple[int, int]],
 ) -> Tuple[List[gs.Variable], List[gs.Node]]:
-    h_in = _tensor_height(entry)
     tiles = []
-    nodes: List[gs.Node] = []
-
-    for tile_id, (start, end) in enumerate(entry_ranges):
-        assert not (start < 0 or end < 0 or start > end or end > h_in), (
-            f"invalid entry range for tile {tile_id}: [{start},{end}) with input height {h_in}"
-        )
+    nodes = []
+    for start, end in entry_ranges:
         tile, node = _make_slice(name_scope, entry, start, end, 2)
         tiles.append(tile)
         nodes.append(node)
-
     return tiles, nodes
 
 
