@@ -4,13 +4,17 @@ This tool rewrites ONNX models so selected node ranges run as tiles instead of f
 
 ## What this tool does
 
-Given an input model and a split plan, the tool:
+Given an ONNX model and a split config, this tool generates a new ONNX model where selected node ranges run tile-by-tile instead of on full tensors.
 
-- Splits the chain input tensor into multiple tiles.
-- Back-propagates required ranges from group output to build per-tile entry halos.
-- Rewrites supported operators to run per tile inside the group.
-- Handles convolution border padding locally per tile.
-- Reassembles the tiled results back into the original tensor layout.
+For each configured node range, it:
+
+1. Splits the range input tensor into `tile_count` tiles.
+2. Computes the halo each tile needs so convolution results match the original full-tensor run.
+3. Rewrites supported operators in that range to consume and produce per-tile tensors.
+4. Applies convolution border padding per tile when needed.
+5. Stitches tile outputs back into the original tensor layout.
+
+The rewritten model keeps the same external I/O interface, and the CLI verifies numerical equivalence with ONNX Runtime by default.
 
 ## Requirements
 
