@@ -16,24 +16,28 @@ For each configured node range, it:
 
 The rewritten model keeps the same external I/O interface, and the CLI verifies numerical equivalence with ONNX Runtime by default.
 
-## Requirements
-
-```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
 ## Quick start
 
-1. Create a split config JSON file (see [Configuration format](#configuration-format)).
-2. Run the rewrite command.
+1. Create and activate a virtual environment.
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+2. Install dependencies.
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Create a split config JSON file (see [Configuration format](#configuration-format)) and run the rewrite command.
 
    ```bash
    python -m ts.cli input.onnx config.json output.onnx
    ```
 
-3. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
+4. Check the verification result (`PASS` or `FAIL`) printed by the CLI.
 
 ## CLI reference
 
