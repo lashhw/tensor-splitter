@@ -4,7 +4,7 @@ from typing import List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from .catalog import SUPPORTED_NON_CONV_OPS, TileBlock
+from .catalog import SUPPORTED_GROUP_OPS, SUPPORTED_NON_CONV_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
 from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height
@@ -12,11 +12,7 @@ from .tiling import _conv_input_slice_for_output, _conv_output_height
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
-    if node.op in SUPPORTED_NON_CONV_OPS:
-        return
-    if node.op == "Conv":
-        return
-    assert False, f"unsupported op {node.op} for tiled rewrite"
+    assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
 
 
 def _build_non_conv_tiles(
@@ -39,7 +35,8 @@ def _build_non_conv_tiles(
             assert isinstance(inp, gs.Constant), (
                 f"node {node.name or node.op} has unsupported external variable input {inp.name}"
             )
-        out_shape = tile.shape if hasattr(tile, "shape") else None
+        assert tile.shape is not None, f"node {node.name or node.op} tile {tile_id} must have static shape"
+        out_shape = tile.shape
         out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
             dtype=tile.dtype,
@@ -171,7 +168,4 @@ def _build_tiled_op(
     assert in_ranges == out_ranges, (
         f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
     )
-    if node.op in SUPPORTED_NON_CONV_OPS:
-        next_tiles, new_nodes, blocks = _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
-        return next_tiles, new_nodes, blocks
-    assert False, f"unsupported op {node.op}"
+    return _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)

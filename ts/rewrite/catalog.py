@@ -20,3 +20,4 @@ class TileBlock:
 
 
 SUPPORTED_NON_CONV_OPS = {"Relu", "BatchNormalization"}
+SUPPORTED_GROUP_OPS = SUPPORTED_NON_CONV_OPS | {"Conv"}

@@ -33,11 +33,7 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
     main_input_indices = []
 
     first = group_nodes[0]
-    entry_candidates = []
-    for idx, inp in enumerate(first.inputs):
-        if _is_constant(inp):
-            continue
-        entry_candidates.append((idx, inp))
+    entry_candidates = [(idx, inp) for idx, inp in enumerate(first.inputs) if not _is_constant(inp)]
 
     assert len(entry_candidates) == 1, (
         "group entry node must have exactly one non-constant input from outside the group"
@@ -60,18 +56,18 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
             )
             producer = producers[0]
 
-            if main_idx is not None:
-                assert False, (
-                    f"node {_node_label(node)} must have exactly one data input from within group"
-                )
+            assert main_idx is None, (
+                f"node {_node_label(node)} must have exactly one data input from within group"
+            )
             main_idx = idx
 
             assert id(producer) == id(prev), (
                 f"node {_node_label(node)} data input must come from previous node in group"
             )
 
-        if main_idx is None:
-            assert False, f"node {_node_label(node)} must have exactly one data input from within group"
+        assert main_idx is not None, (
+            f"node {_node_label(node)} must have exactly one data input from within group"
+        )
         main_input_indices.append(main_idx)
 
     for node in group_nodes:
