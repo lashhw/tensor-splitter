@@ -6,7 +6,7 @@ import onnx
 
 from ts.config import parse_config
 from ts.rewrite import rewrite_model
-from ts.verify import verify_models
+from ts.verify import verify_model
 
 
 def _parse_args() -> argparse.Namespace:
@@ -25,13 +25,14 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    groups = parse_config(args.config)
+
     model = onnx.load(args.input)
+    groups = parse_config(args.config)
     rewritten = rewrite_model(model, groups)
     onnx.save(rewritten, args.output)
 
     if args.verify:
-        ok, diffs = verify_models(model, rewritten)
+        ok, diffs = verify_model(model, rewritten)
         print("Verification: PASS" if ok else "Verification: FAIL")
         for name, diff in diffs.items():
             print(f"{name}: max_abs_diff={diff}")

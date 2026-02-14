@@ -30,7 +30,7 @@ def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random
     return data
 
 
-def verify_models(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple[bool, Dict[str, float]]:
+def verify_model(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple[bool, Dict[str, float]]:
     sess_options = ort.SessionOptions()
     sess_original = ort.InferenceSession(original.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])

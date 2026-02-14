@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ts.verify import verify_models
+from ts.verify import verify_model
 
 
 def _make_identity_model():
@@ -42,29 +42,29 @@ def _make_two_input_sub_model(swap_inputs: bool = False):
     return onnx.shape_inference.infer_shapes(model)
 
 
-def test_verify_models_returns_true_for_equal_models():
+def test_verify_model_returns_true_for_equal_models():
     model = _make_identity_model()
-    ok, diffs = verify_models(model, model)
+    ok, diffs = verify_model(model, model)
 
     assert ok
     assert diffs["out"] == 0.0
 
 
-def test_verify_models_returns_false_for_numerical_mismatch():
+def test_verify_model_returns_false_for_numerical_mismatch():
     original = _make_identity_model()
     rewritten = _make_add_one_model()
 
-    ok, diffs = verify_models(original, rewritten)
+    ok, diffs = verify_model(original, rewritten)
 
     assert not ok
     assert diffs["out"] > 0.0
 
 
-def test_verify_models_uses_distinct_random_inputs_per_input_tensor():
+def test_verify_model_uses_distinct_random_inputs_per_input_tensor():
     original = _make_two_input_sub_model(swap_inputs=False)
     rewritten = _make_two_input_sub_model(swap_inputs=True)
 
-    ok, diffs = verify_models(original, rewritten)
+    ok, diffs = verify_model(original, rewritten)
 
     assert not ok
     assert diffs["out"] > 0.0
