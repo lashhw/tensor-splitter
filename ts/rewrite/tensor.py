@@ -13,12 +13,6 @@ def _require_static_dim(dim: Any, name: str) -> int:
     return int(dim)
 
 
-def _tensor_rank(tensor: gs.Tensor) -> int:
-    if hasattr(tensor, "shape") and tensor.shape is not None:
-        return len(tensor.shape)
-    return 0
-
-
 def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
     assert hasattr(tensor, "shape") and tensor.shape is not None, (
         f"tensor {tensor.name} has no static shape information"
@@ -34,8 +28,7 @@ def _clone_shape_with_height(
 ) -> Optional[List[Any]]:
     if shape is None:
         return None
-    if len(shape) <= axis:
-        return None
+    assert len(shape) > axis, f"shape rank {len(shape)} is too small for axis {axis}"
     new_shape = list(shape)
     new_shape[axis] = height
     return new_shape
@@ -90,18 +83,18 @@ def _make_pad(
     pad_top: int,
     pad_bottom: int,
 ) -> Tuple[gs.Variable, gs.Node]:
-    rank = _tensor_rank(data)
-    assert rank == 4, f"Pad expects 4D NCHW tensors; got rank {rank} for {data.name}"
+    assert hasattr(data, "shape") and data.shape is not None, (
+        f"Pad expects static tensor shape for {data.name}"
+    )
+    assert len(data.shape) == 4, f"Pad expects 4D NCHW tensors; got rank {len(data.shape)} for {data.name}"
 
     pads = [0, 0, pad_top, 0, 0, 0, pad_bottom, 0]
     pads_const = _make_constant(name_scope, np.array(pads, dtype=np.int64))
     const_dtype = data.dtype or np.float32
     const_val = _make_constant(name_scope, np.array(0, dtype=const_dtype))
 
-    out_shape = None
-    if hasattr(data, "shape") and data.shape is not None:
-        out_shape = list(data.shape)
-        out_shape[2] = _require_static_dim(out_shape[2], f"{data.name} height") + pad_top + pad_bottom
+    out_shape = list(data.shape)
+    out_shape[2] = _require_static_dim(out_shape[2], f"{data.name} height") + pad_top + pad_bottom
 
     out = gs.Variable(name_scope.make(f"{data.name}_pad"), dtype=data.dtype, shape=out_shape)
     node = gs.Node(

@@ -4,7 +4,7 @@ from typing import List, Sequence, Tuple
 
 import onnx_graphsurgeon as gs
 
-from .catalog import UNARY_CONST_OPS, UNARY_OPS, TileBlock
+from .catalog import SUPPORTED_NON_CONV_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
 from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height
@@ -12,46 +12,14 @@ from .tiling import _conv_input_slice_for_output, _conv_output_height
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
-    if node.op in UNARY_OPS:
-        return
-    if node.op in UNARY_CONST_OPS:
+    if node.op in SUPPORTED_NON_CONV_OPS:
         return
     if node.op == "Conv":
         return
     assert False, f"unsupported op {node.op} for tiled rewrite"
 
 
-def _build_unary_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: Sequence[gs.Variable],
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    out_tiles = []
-    new_nodes: List[gs.Node] = []
-    blocks = []
-
-    for tile_id, tile in enumerate(tiles):
-        out_shape = tile.shape if hasattr(tile, "shape") else None
-        out = gs.Variable(
-            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
-            dtype=tile.dtype,
-            shape=out_shape,
-        )
-        new_node = gs.Node(
-            op=node.op,
-            inputs=[tile],
-            outputs=[out],
-            attrs=dict(node.attrs) if node.attrs else {},
-        )
-        new_nodes.append(new_node)
-        out_tiles.append(out)
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
-
-    return out_tiles, new_nodes, blocks
-
-
-def _build_unary_const_tiles(
+def _build_non_conv_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
@@ -203,12 +171,7 @@ def _build_tiled_op(
     assert in_ranges == out_ranges, (
         f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
     )
-    if node.op in UNARY_OPS:
-        next_tiles, new_nodes, blocks = _build_unary_tiles(name_scope, node, orig_index, tiles)
-        return next_tiles, new_nodes, blocks
-    if node.op in UNARY_CONST_OPS:
-        next_tiles, new_nodes, blocks = _build_unary_const_tiles(
-            name_scope, node, orig_index, tiles, main_idx
-        )
+    if node.op in SUPPORTED_NON_CONV_OPS:
+        next_tiles, new_nodes, blocks = _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
         return next_tiles, new_nodes, blocks
     assert False, f"unsupported op {node.op}"
