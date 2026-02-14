@@ -13,7 +13,7 @@ For each configured node range, it:
 3. Rewrites operators in that range to consume and produce per-tile tensors.
 4. Stitches tile outputs back into the original tensor layout.
 
-The rewritten model keeps the same external I/O interface, and the CLI verifies numerical equivalence with ONNX Runtime by default.
+After rewriting, the CLI verifies numerical equivalence with ONNX Runtime by default.
 
 ## Quick start
 
