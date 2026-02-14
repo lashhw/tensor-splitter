@@ -25,7 +25,7 @@ def _plan_stage_ranges(
     stage_ranges[-1] is the required range list for group output (used for final concat).
     """
     stage_count = len(group_info.nodes) + 1
-    stage_ranges: List[List[Tuple[int, int]]] = [[] for _ in range(stage_count)]
+    stage_ranges = [[] for _ in range(stage_count)]
     stage_ranges[-1] = _partition_ranges(_tensor_height(group_info.exit_tensor), tile_count)
 
     for stage_idx in range(stage_count - 2, -1, -1):
