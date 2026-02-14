@@ -60,7 +60,7 @@ def _validate_group(group: GroupConfig) -> None:
 
 def _validate_ranges(groups: Sequence[GroupConfig]) -> None:
     ranges_sorted = sorted(group.node_range for group in groups)
-    for (a0, b0), (a1, b1) in zip(ranges_sorted, ranges_sorted[1:]):
+    for (a0, b0), (a1, b1) in zip(ranges_sorted[:-1], ranges_sorted[1:]):
         assert a1 > b0, f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
 
 

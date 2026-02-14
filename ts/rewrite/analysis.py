@@ -61,11 +61,6 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
             )
             producer = producers[0]
 
-            assert id(producer) in group_node_ids, (
-                f"node {_node_label(node)} has non-constant input {inp.name} that is produced "
-                "outside the group; all non-constant inputs must come from nodes in the group"
-            )
-
             if main_idx is not None:
                 assert False, (
                     f"node {_node_label(node)} must have exactly one data input from within group"
