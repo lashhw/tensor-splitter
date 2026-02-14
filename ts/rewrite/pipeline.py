@@ -11,30 +11,7 @@ from .assembly import _build_group_output, _build_group_tiles
 from .naming import NameScope
 from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_execution_order
 
-_MIN_REWRITE_OPSET = 11
-
-
-def _default_opset(model: onnx.ModelProto) -> int:
-    for imp in model.opset_import:
-        if not imp.domain:
-            return int(imp.version)
-    raise AssertionError("model is missing default ONNX opset import")
-
-
-def _ensure_supported_opset(model: onnx.ModelProto) -> onnx.ModelProto:
-    """
-    The rewriter emits Slice/Pad in tensor-input form, which requires opset >= 11.
-    """
-    current = _default_opset(model)
-    if current >= _MIN_REWRITE_OPSET:
-        return model
-
-    try:
-        return onnx.version_converter.convert_version(model, _MIN_REWRITE_OPSET)
-    except Exception as exc:  # pragma: no cover - exercised only when converter fails
-        raise RuntimeError(
-            f"failed to upgrade model opset from {current} to {_MIN_REWRITE_OPSET} for rewrite"
-        ) from exc
+_TARGET_OPSET = 11
 
 
 def _rewrite_group(
@@ -80,7 +57,7 @@ def _apply_group(
 
 
 def rewrite_model(model: onnx.ModelProto, groups: Sequence[GroupConfig]) -> onnx.ModelProto:
-    model = _ensure_supported_opset(model)
+    model = onnx.version_converter.convert_version(model, _TARGET_OPSET)
     model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)

@@ -13,6 +13,10 @@ from ts.config import GroupConfig
 from ts.rewrite import rewrite_model
 
 
+def _default_opset(model: onnx.ModelProto) -> int:
+    return next(int(imp.version) for imp in model.opset_import if not imp.domain)
+
+
 def _make_conv_model():
     inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 8, 8])
     weight = gs.Constant("W", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
@@ -101,10 +105,10 @@ def test_rewrite_upgrades_legacy_opset_model():
     groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
     rewritten = rewrite_model(legacy, groups)
 
-    legacy_opset = next(imp.version for imp in legacy.opset_import if not imp.domain)
-    rewritten_opset = next(imp.version for imp in rewritten.opset_import if not imp.domain)
+    legacy_opset = _default_opset(legacy)
+    rewritten_opset = _default_opset(rewritten)
     assert legacy_opset == 7
-    assert rewritten_opset >= 11
+    assert rewritten_opset == 11
 
     import onnxruntime as ort
 
@@ -118,7 +122,31 @@ def test_rewrite_upgrades_legacy_opset_model():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
+def test_rewrite_forces_target_opset_from_legacy_model():
+    model = _make_conv_model()
+    legacy = onnx.version_converter.convert_version(model, 7)
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+
+    rewritten = rewrite_model(legacy, groups)
+
+    assert _default_opset(legacy) == 7
+    assert _default_opset(rewritten) == 11
+
+
+def test_rewrite_forces_target_opset_from_newer_model():
+    model = _make_conv_model()
+    newer = onnx.version_converter.convert_version(model, 13)
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+
+    rewritten = rewrite_model(newer, groups)
+
+    assert _default_opset(newer) == 13
+    assert _default_opset(rewritten) == 11
+
+
 if __name__ == "__main__":
     test_small_conv_rewrite_matches()
     test_padding_only_tile_conv_rewrite_matches()
     test_rewrite_upgrades_legacy_opset_model()
+    test_rewrite_forces_target_opset_from_legacy_model()
+    test_rewrite_forces_target_opset_from_newer_model()
