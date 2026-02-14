@@ -30,7 +30,6 @@ def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> Gro
     )
 
     group_nodes = nodes[a : b + 1]
-    group_node_ids = {id(node) for node in group_nodes}
     main_input_index = {}
 
     first = group_nodes[0]
