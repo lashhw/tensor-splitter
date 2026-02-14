@@ -64,7 +64,7 @@ Each group contains:
 
 - `node_range`: `[start_node_index, end_node_index]` (inclusive)
 - `tile_count`: number of tiles
-- `execution_order`: list of `[node_index, split_id]` pairs
+- `execution_order`: list of `[node_index, split_id]` pairs (must include each pair in the group exactly once)
 
 ### Example
 
@@ -82,13 +82,6 @@ Each group contains:
   }
 ]
 ```
-
-### Validation rules
-
-- `node_range` must be non-negative and `start <= end`.
-- `tile_count` must be `> 0`.
-- `execution_order` must include every `(node_index, split_id)` in the group exactly once.
-- Group ranges must be disjoint.
 
 ## Testing
 
