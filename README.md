@@ -1,6 +1,6 @@
 # ONNX Tensor Splitter
 
-This tool rewrites ONNX models so selected node ranges run as tiles instead of full tensors. It is designed for Conv-heavy linear chains and adds explicit halo handling to preserve numerical results.
+This tool rewrites ONNX models to execute selected node ranges tile-by-tile. For convolution-heavy linear chains, it adds explicit boundary-overlap logic to keep results numerically equivalent to the original model.
 
 ## What this tool does
 
