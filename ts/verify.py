@@ -6,6 +6,9 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 
+DEFAULT_VERIFY_RTOL = 1e-4
+DEFAULT_VERIFY_ATOL = 1e-5
+
 
 def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random.Generator) -> np.ndarray:
     tensor_type = value_info.type.tensor_type
@@ -30,7 +33,12 @@ def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random
     return data
 
 
-def verify_model(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple[bool, Dict[str, float]]:
+def verify_model(
+    original: onnx.ModelProto,
+    rewritten: onnx.ModelProto,
+    rtol: float = DEFAULT_VERIFY_RTOL,
+    atol: float = DEFAULT_VERIFY_ATOL,
+) -> Tuple[bool, Dict[str, float]]:
     sess_options = ort.SessionOptions()
     sess_original = ort.InferenceSession(original.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
@@ -60,7 +68,7 @@ def verify_model(original: onnx.ModelProto, rewritten: onnx.ModelProto) -> Tuple
 
         diff = float(np.max(np.abs(orig - new)))
         diffs[name] = diff
-        if not np.allclose(orig, new, rtol=1e-5, atol=1e-6):
+        if not np.allclose(orig, new, rtol=rtol, atol=atol):
             ok = False
 
     return ok, diffs

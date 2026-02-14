@@ -85,6 +85,30 @@ def test_padding_only_tile_conv_rewrite_matches():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
+def test_rewrite_upgrades_legacy_opset_model():
+    model = _make_conv_model()
+    legacy = onnx.version_converter.convert_version(model, 7)
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    rewritten = rewrite_model(legacy, groups)
+
+    legacy_opset = next(imp.version for imp in legacy.opset_import if not imp.domain)
+    rewritten_opset = next(imp.version for imp in rewritten.opset_import if not imp.domain)
+    assert legacy_opset == 7
+    assert rewritten_opset >= 11
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(legacy.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 8, 8)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
 if __name__ == "__main__":
     test_small_conv_rewrite_matches()
     test_padding_only_tile_conv_rewrite_matches()
+    test_rewrite_upgrades_legacy_opset_model()
