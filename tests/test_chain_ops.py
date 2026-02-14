@@ -244,7 +244,7 @@ def test_multi_conv_rewrite_matches_and_uses_only_final_concat():
     assert len(concat_nodes) == 1
 
 
-def test_chain_rewrite_handles_empty_intermediate_ranges():
+def test_chain_rewrite_rejects_empty_intermediate_ranges():
     model = _make_downsample_conv_chain_with_padding_model()
     groups = [
         GroupConfig(
@@ -257,18 +257,12 @@ def test_chain_rewrite_handles_empty_intermediate_ranges():
             ],
         )
     ]
-    rewritten = rewrite_model(model, groups)
-
-    import onnxruntime as ort
-
-    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
-    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
-    rng = np.random.default_rng(0)
-    inp = rng.standard_normal((1, 1, 8, 15)).astype(np.float32)
-    out_orig = sess_orig.run(None, {"input": inp})[0]
-    out_new = sess_new.run(None, {"input": inp})[0]
-
-    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+    try:
+        rewrite_model(model, groups)
+    except AssertionError as exc:
+        assert "Conv output range" in str(exc)
+    else:
+        assert False, "rewrite_model should reject groups that produce empty Conv intermediate ranges"
 
 
 if __name__ == "__main__":
@@ -276,4 +270,4 @@ if __name__ == "__main__":
     test_chain_rewrite_rejects_dependency_violating_execution_order()
     test_chain_rewrite_rejects_unsupported_add_op()
     test_multi_conv_rewrite_matches_and_uses_only_final_concat()
-    test_chain_rewrite_handles_empty_intermediate_ranges()
+    test_chain_rewrite_rejects_empty_intermediate_ranges()
