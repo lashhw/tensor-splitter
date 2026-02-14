@@ -62,9 +62,9 @@ The config must be a **JSON list** of group entries.
 
 Each group contains:
 
-- `node_range`: `[start_node_index, end_node_index]` (inclusive)
+- `node_range`: `[start_node_index, end_node_index]`
 - `tile_count`: number of tiles
-- `execution_order`: list of `[node_index, split_id]` pairs (must include each pair in the group exactly once)
+- `execution_order`: list of `[node_index, split_id]` pairs
 
 ### Example
 
@@ -82,6 +82,11 @@ Each group contains:
   }
 ]
 ```
+
+Notes:
+
+- `node_range` is inclusive.
+- `execution_order` must include each pair in the group exactly once.
 
 ## Testing
 
