@@ -4,10 +4,10 @@ from typing import Dict, List, Tuple
 
 import onnx_graphsurgeon as gs
 
-from .catalog import TileBlock
+from .types import TileBlock
 
 
-def _ensure_toposorted(nodes: List[gs.Node]) -> None:
+def ensure_topologically_sorted(nodes: List[gs.Node]) -> None:
     index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
     for node_idx, node in enumerate(nodes):
         for tensor in node.inputs:
@@ -18,7 +18,7 @@ def _ensure_toposorted(nodes: List[gs.Node]) -> None:
                 assert producer_idx <= node_idx, "graph nodes are not topologically sorted"
 
 
-def _build_execution_order_map(
+def build_execution_order_map(
     blocks: List[TileBlock],
     schedule: List[Tuple[int, int]],
     final_node: gs.Node,
@@ -27,12 +27,13 @@ def _build_execution_order_map(
     order_map = {}
     for block in blocks:
         key = (block.orig_index, block.tile_id)
-        block.assign_order(order_map, schedule_pos[key])
+        assert key in schedule_pos, f"missing schedule entry for block {key}"
+        order_map[id(block.node)] = schedule_pos[key]
     order_map[id(final_node)] = len(schedule)
     return order_map
 
 
-def _order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -> List[gs.Node]:
+def order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -> List[gs.Node]:
     indexed = list(enumerate(nodes))
     scheduled = [
         (order_map[id(node)], orig_pos, node)
@@ -41,5 +42,5 @@ def _order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -
     scheduled.sort(key=lambda item: (item[0], item[1]))
     ordered = [node for _, _, node in scheduled]
 
-    _ensure_toposorted(ordered)
+    ensure_topologically_sorted(ordered)
     return ordered

@@ -8,7 +8,7 @@ import onnx_graphsurgeon as gs
 from .naming import NameScope
 
 
-def _is_constant(tensor: gs.Tensor) -> bool:
+def is_constant(tensor: gs.Tensor) -> bool:
     return isinstance(tensor, gs.Constant)
 
 
@@ -17,7 +17,7 @@ def _require_static_dim(dim: Any, name: str) -> int:
     return int(dim)
 
 
-def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
+def tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
     assert hasattr(tensor, "shape") and tensor.shape is not None, (
         f"tensor {tensor.name} has no static shape information"
     )
@@ -25,21 +25,23 @@ def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
     return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
 
 
-def _clone_shape_with_height(
+def clone_shape_with_height(
     shape: Optional[List[Any]],
     axis: int,
     height: int,
 ) -> Optional[List[Any]]:
+    if shape is None:
+        return None
     new_shape = list(shape)
     new_shape[axis] = height
     return new_shape
 
 
-def _make_constant(name_scope: NameScope, values: np.ndarray) -> gs.Constant:
+def make_constant(name_scope: NameScope, values: np.ndarray) -> gs.Constant:
     return gs.Constant(name_scope.make("tsplit_const"), values)
 
 
-def _make_slice(
+def make_slice(
     name_scope: NameScope,
     data: gs.Tensor,
     start: int,
@@ -49,12 +51,12 @@ def _make_slice(
     assert hasattr(data, "shape") and data.shape is not None, (
         f"Slice expects static tensor shape for {data.name}"
     )
-    starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
-    ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
-    axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
-    steps = _make_constant(name_scope, np.array([1], dtype=np.int64))
+    starts = make_constant(name_scope, np.array([start], dtype=np.int64))
+    ends = make_constant(name_scope, np.array([end], dtype=np.int64))
+    axes = make_constant(name_scope, np.array([axis], dtype=np.int64))
+    steps = make_constant(name_scope, np.array([1], dtype=np.int64))
 
-    out_shape = _clone_shape_with_height(data.shape, axis, end - start)
+    out_shape = clone_shape_with_height(data.shape, axis, end - start)
     out = gs.Variable(
         name_scope.make(f"{data.name}_slice"),
         dtype=data.dtype,
@@ -64,7 +66,7 @@ def _make_slice(
     return out, node
 
 
-def _make_concat(
+def make_concat(
     name_scope: NameScope,
     inputs: List[gs.Tensor],
     axis: int,

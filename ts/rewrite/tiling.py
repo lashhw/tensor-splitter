@@ -1,18 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
+
+from .types import ConvSlice, HeightRange
 
 
-@dataclass(frozen=True)
-class ConvInputSlice:
-    slice_start: int
-    slice_end: int
-    pad_top: int
-    pad_bottom: int
-
-
-def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
+def partition_ranges(total: int, tile_count: int) -> List[HeightRange]:
     assert total is not None and total > 0, f"total must be > 0; got {total}"
     assert tile_count > 0, f"tile_count must be > 0; got {tile_count}"
     assert tile_count <= total, (
@@ -31,14 +24,14 @@ def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
     return ranges
 
 
-def _conv_input_slice_for_output(
+def conv_input_slice_for_output(
     y0: int,
     y1: int,
     stride: int,
     kernel: int,
     pad_top: int,
     h_in: int,
-) -> ConvInputSlice:
+) -> ConvSlice:
     assert y1 > y0, f"empty or invalid Conv output range [{y0},{y1}) is not supported"
 
     x0 = y0 * stride - pad_top
@@ -48,7 +41,7 @@ def _conv_input_slice_for_output(
     slice_end = min(x1, h_in)
     assert slice_start <= slice_end
 
-    return ConvInputSlice(
+    return ConvSlice(
         slice_start=slice_start,
         slice_end=slice_end,
         pad_top=max(0, -x0),

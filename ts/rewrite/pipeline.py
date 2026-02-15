@@ -1,58 +1,31 @@
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import onnx
 import onnx_graphsurgeon as gs
 
 from ..config import GroupConfig
-from .analysis import GroupInfo, _analyze_group
-from .assembly import _build_group_tiles
+from .analysis import analyze_group
+from .apply import apply_group_rewrite
+from .assembly import build_group_tiles
 from .naming import NameScope
-from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_execution_order
+from .ordering import build_execution_order_map, ensure_topologically_sorted, order_by_execution_order
+from .types import GroupAnalysis
 
 _TARGET_OPSET = 11
 
 
-def _rewrite_group(
-    group_info: GroupInfo,
+def rewrite_group(
+    group: GroupAnalysis,
     group_cfg: GroupConfig,
     node_index_map: Dict[int, int],
     name_scope: NameScope,
-) -> Tuple[List[gs.Node], gs.Variable]:
-    nodes, blocks, concat_out, concat_node = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
-    order_map = _build_execution_order_map(blocks, group_cfg.execution_order, concat_node)
-    ordered_nodes = _order_by_execution_order(nodes, order_map)
-    return ordered_nodes, concat_out
-
-
-def _apply_group(
-    graph: gs.Graph,
-    orig_nodes: List[gs.Node],
-    group_info: GroupInfo,
-    group_cfg: GroupConfig,
-    new_nodes: List[gs.Node],
-    concat_out: gs.Variable,
-) -> None:
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
-    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
-    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
-
-    for consumer in list(group_info.exit_tensor.outputs):
-        for idx, inp in enumerate(consumer.inputs):
-            if inp is group_info.exit_tensor:
-                consumer.inputs[idx] = concat_out
-
-    for idx, out in enumerate(graph.outputs):
-        if out is group_info.exit_tensor:
-            graph.outputs[idx] = concat_out
-
-    for node in group_info.nodes:
-        node.inputs = []
-        node.outputs = []
-
-    graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
+) -> tuple[List[gs.Node], gs.Variable]:
+    build = build_group_tiles(name_scope, group, group_cfg, node_index_map)
+    order_map = build_execution_order_map(build.blocks, group_cfg.execution_order, build.concat_node)
+    ordered_nodes = order_by_execution_order(build.nodes, order_map)
+    return ordered_nodes, build.concat_output
 
 
 def rewrite_model(model: onnx.ModelProto, groups: List[GroupConfig]) -> onnx.ModelProto:
@@ -60,16 +33,16 @@ def rewrite_model(model: onnx.ModelProto, groups: List[GroupConfig]) -> onnx.Mod
     model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
-    _ensure_toposorted(orig_nodes)
+    ensure_topologically_sorted(orig_nodes)
 
     groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
     name_scope = NameScope.from_existing(set(graph.tensors().keys()))
 
     for group_cfg in groups_sorted:
-        group_info = _analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, concat_out = _rewrite_group(group_info, group_cfg, node_index_map, name_scope)
-        _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out)
+        group = analyze_group(orig_nodes, group_cfg.node_range)
+        new_nodes, concat_out = rewrite_group(group, group_cfg, node_index_map, name_scope)
+        apply_group_rewrite(graph, orig_nodes, group, new_nodes, concat_out)
 
     out_model = gs.export_onnx(graph)
     out_model = onnx.shape_inference.infer_shapes(out_model)
