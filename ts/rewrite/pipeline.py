@@ -4,15 +4,14 @@ import onnx_graphsurgeon as gs
 from .analysis import _analyze_group
 from .assembly import _build_group_tiles
 from .naming import NameScope
-from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_execution_order
+from .ordering import _ensure_toposorted
 
 _TARGET_OPSET = 11
 
 
 def _rewrite_group(group_info, group_cfg, node_index_map, name_scope):
-    nodes, blocks, concat_out, concat_node = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
-    order_map = _build_execution_order_map(blocks, group_cfg.execution_order, concat_node)
-    ordered_nodes = _order_by_execution_order(nodes, order_map)
+    ordered_nodes, concat_out = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
+    _ensure_toposorted(ordered_nodes)
     return ordered_nodes, concat_out
 
 

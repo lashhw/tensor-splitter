@@ -1,13 +1,11 @@
 import onnx_graphsurgeon as gs
 
-from .catalog import TileBlock
 from .conv import _conv_attrs_with_height_pad
 from .tensor import _shape_with_dim_size
 
 def _build_conv_tiles(
     name_scope,
     node,
-    orig_index,
     tiles,
     out_ranges,
     conv_slices,
@@ -16,7 +14,6 @@ def _build_conv_tiles(
 ):
     out_tiles = []
     new_nodes = []
-    blocks = []
 
     for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
         new_pads = [slice_info.pad_top, conv_base_pads[1], slice_info.pad_bottom, conv_base_pads[3]]
@@ -40,21 +37,17 @@ def _build_conv_tiles(
         )
         new_nodes.append(conv_node)
 
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, node=conv_node))
-
-    return out_tiles, new_nodes, blocks
+    return out_tiles, new_nodes
 
 
 def _build_non_conv_tiles(
     name_scope,
     node,
-    orig_index,
     tiles,
     main_input_index,
 ):
     out_tiles = []
     new_nodes = []
-    blocks = []
 
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
@@ -75,15 +68,12 @@ def _build_non_conv_tiles(
         )
         new_nodes.append(new_node)
 
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, node=new_node))
-
-    return out_tiles, new_nodes, blocks
+    return out_tiles, new_nodes
 
 
 def _build_tiled_op(
     name_scope,
     node,
-    orig_index,
     tiles,
     out_ranges,
     main_idx,
@@ -91,6 +81,6 @@ def _build_tiled_op(
     conv_base_pads=None,
 ):
     if node.op == "Conv":
-        return _build_conv_tiles(name_scope, node, orig_index, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
+        return _build_conv_tiles(name_scope, node, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
     else:
-        return _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
+        return _build_non_conv_tiles(name_scope, node, tiles, main_idx)

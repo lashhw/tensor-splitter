@@ -1,11 +1,8 @@
-import onnx_graphsurgeon as gs
-
-from .catalog import TileBlock, _ensure_supported_op
+from .catalog import _ensure_supported_op
 from .conv import _conv_params
 from .lowering import _build_tiled_op
-from .naming import NameScope
 from .tensor import _make_concat, _make_slice, _tensor_height
-from .tiling import ConvInputSlice, _conv_input_slice_for_output, _partition_ranges
+from .tiling import _conv_input_slice_for_output, _partition_ranges
 
 
 def _plan_stage_ranges(group_info, tile_count):
@@ -55,14 +52,52 @@ def _plan_stage_ranges(group_info, tile_count):
     return stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage
 
 
-def _build_entry_tiles(name_scope, entry, entry_ranges):
+def _slot_offsets(slot_sizes):
+    offsets = []
+    running = 0
+    for size in slot_sizes:
+        offsets.append(running)
+        running += size
+    return offsets, running
+
+
+def _build_ordered_node_writer(schedule, first_orig_index):
+    schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
+    slot_sizes = [2 if orig_index == first_orig_index else 1 for orig_index, _ in schedule]
+    slot_offsets, total_rewritten = _slot_offsets(slot_sizes)
+    slot_limits = [offset + size for offset, size in zip(slot_offsets, slot_sizes)]
+    slot_cursor = list(slot_offsets)
+    ordered_nodes = [None for _ in range(total_rewritten + 1)]
+
+    def place_node(orig_index, tile_id, node):
+        key = (orig_index, tile_id)
+        assert key in schedule_pos, f"missing execution_order entry for {key}"
+        slot_idx = schedule_pos[key]
+        write_idx = slot_cursor[slot_idx]
+        assert write_idx < slot_limits[slot_idx], f"execution_order slot {key} has too many rewritten nodes"
+        ordered_nodes[write_idx] = node
+        slot_cursor[slot_idx] += 1
+
+    def finalize_nodes(concat_node):
+        for slot_idx, key in enumerate(schedule):
+            assert slot_cursor[slot_idx] == slot_limits[slot_idx], (
+                f"execution_order slot {key} has missing rewritten nodes"
+            )
+
+        ordered_nodes[-1] = concat_node
+        assert all(node is not None for node in ordered_nodes), "internal error: unfilled ordered node slot"
+        return ordered_nodes
+
+    return place_node, finalize_nodes
+
+
+def _build_entry_tiles(name_scope, entry, entry_ranges, first_orig_index, place_node):
     tiles = []
-    nodes = []
-    for start, end in entry_ranges:
+    for tile_id, (start, end) in enumerate(entry_ranges):
         tile, node = _make_slice(name_scope, entry, start, end, 2)
         tiles.append(tile)
-        nodes.append(node)
-    return tiles, nodes
+        place_node(first_orig_index, tile_id, node)
+    return tiles
 
 
 def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
@@ -70,13 +105,9 @@ def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
         _ensure_supported_op(node)
 
     stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage = _plan_stage_ranges(group_info, group_cfg.tile_count)
-    tiles, nodes = _build_entry_tiles(name_scope, group_info.entry_tensor, stage_ranges[0])
-
     first_orig_index = node_index_map[id(group_info.nodes[0])]
-    blocks = [
-        TileBlock(orig_index=first_orig_index, tile_id=tile_id, node=slice_node)
-        for tile_id, slice_node in enumerate(nodes)
-    ]
+    place_node, finalize_nodes = _build_ordered_node_writer(group_cfg.execution_order, first_orig_index)
+    tiles = _build_entry_tiles(name_scope, group_info.entry_tensor, stage_ranges[0], first_orig_index, place_node)
 
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
@@ -84,12 +115,12 @@ def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
         out_ranges = stage_ranges[stage_idx + 1]
         conv_slices = conv_slices_by_stage[stage_idx]
         conv_base_pads = conv_base_pads_by_stage[stage_idx]
-        tiles, op_nodes, op_blocks = _build_tiled_op(
-            name_scope, node, orig_index, tiles, out_ranges, main_idx, conv_slices, conv_base_pads
+        tiles, op_nodes = _build_tiled_op(
+            name_scope, node, tiles, out_ranges, main_idx, conv_slices, conv_base_pads
         )
-        nodes.extend(op_nodes)
-        blocks.extend(op_blocks)
+        for tile_id, op_node in enumerate(op_nodes):
+            place_node(orig_index, tile_id, op_node)
 
     concat_out, concat_node = _make_concat(name_scope, tiles, 2, group_info.exit_tensor.shape)
-    nodes.append(concat_node)
-    return nodes, blocks, concat_out, concat_node
+    ordered_nodes = finalize_nodes(concat_node)
+    return ordered_nodes, concat_out
