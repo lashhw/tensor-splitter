@@ -3,28 +3,6 @@ from .lowering import _build_entry_tiles, _build_group_concat, _build_stage_tile
 from .planning import _build_ordered_node_writer, _plan_stage_ranges
 
 
-def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
-    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
-    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
-
-    for consumer in list(group_info.exit_tensor.outputs):
-        for idx, inp in enumerate(consumer.inputs):
-            if inp is group_info.exit_tensor:
-                consumer.inputs[idx] = concat_out
-
-    for idx, out in enumerate(graph.outputs):
-        if out is group_info.exit_tensor:
-            graph.outputs[idx] = concat_out
-
-    for node in group_info.nodes:
-        node.inputs = []
-        node.outputs = []
-
-    graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
-
-
 def _build_group(group_info, group_cfg, node_index_map):
     for node in group_info.nodes:
         _ensure_supported_op(node)
@@ -59,3 +37,25 @@ def _build_group(group_info, group_cfg, node_index_map):
     _ensure_toposorted(ordered_nodes)
 
     return ordered_nodes, concat_out
+
+
+def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
+    node_a = orig_nodes[group_cfg.node_range[0]]
+    node_b = orig_nodes[group_cfg.node_range[1]]
+    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
+    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
+
+    for consumer in list(group_info.exit_tensor.outputs):
+        for idx, inp in enumerate(consumer.inputs):
+            if inp is group_info.exit_tensor:
+                consumer.inputs[idx] = concat_out
+
+    for idx, out in enumerate(graph.outputs):
+        if out is group_info.exit_tensor:
+            graph.outputs[idx] = concat_out
+
+    for node in group_info.nodes:
+        node.inputs = []
+        node.outputs = []
+
+    graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
