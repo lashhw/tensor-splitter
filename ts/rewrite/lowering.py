@@ -30,12 +30,6 @@ def _build_conv_tiles(
     d_h = dilations[0]
     pad_top = pads[0]
 
-    h_in = _tensor_height(node.inputs[main_input_index])
-    assert len(tiles) == len(in_ranges) and len(tiles) == len(out_ranges), (
-        f"Conv tile/range mismatch: tiles={len(tiles)}, in_ranges={len(in_ranges)}, "
-        f"out_ranges={len(out_ranges)}"
-    )
-
     out_tiles = []
     new_nodes: List[gs.Node] = []
     blocks = []
@@ -47,15 +41,9 @@ def _build_conv_tiles(
         assert tile_h == expected_tile_h, (
             f"Conv tile {tile_id} height mismatch: tensor has {tile_h}, range requires {expected_tile_h}"
         )
-        slice_info = _conv_input_slice_for_output(
-            y0=y0,
-            y1=y1,
-            stride=s_h,
-            dilation=d_h,
-            kernel=k_h,
-            pad_top=pad_top,
-            h_in=h_in,
-        )
+
+        h_in = _tensor_height(node.inputs[main_input_index])
+        slice_info = _conv_input_slice_for_output(y0, y1, s_h, d_h, k_h, pad_top, h_in)
         expected_in_range = (slice_info.slice_start, slice_info.slice_end)
         assert expected_in_range == (in_start, in_end), (
             f"planned Conv input range mismatch for tile {tile_id}: planned [{in_start},{in_end}), "
