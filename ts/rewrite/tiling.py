@@ -1,18 +1,12 @@
-from __future__ import annotations
+from collections import namedtuple
 
-from dataclasses import dataclass
-from typing import List, Tuple
-
-
-@dataclass(frozen=True)
-class ConvInputSlice:
-    slice_start: int
-    slice_end: int
-    pad_top: int
-    pad_bottom: int
+ConvInputSlice = namedtuple(
+    "ConvInputSlice",
+    ["slice_start", "slice_end", "pad_top", "pad_bottom"],
+)
 
 
-def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
+def _partition_ranges(total, tile_count):
     base = total // tile_count
     rem = total % tile_count
     ranges = []
@@ -26,13 +20,13 @@ def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
 
 
 def _conv_input_slice_for_output(
-    y0: int,
-    y1: int,
-    stride: int,
-    kernel: int,
-    pad_top: int,
-    h_in: int,
-) -> ConvInputSlice:
+    y0,
+    y1,
+    stride,
+    kernel,
+    pad_top,
+    h_in,
+):
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + kernel
 

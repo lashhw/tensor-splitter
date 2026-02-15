@@ -1,13 +1,4 @@
-from __future__ import annotations
-
-from typing import Dict, List, Tuple
-
-import onnx_graphsurgeon as gs
-
-from .catalog import TileBlock
-
-
-def _ensure_toposorted(nodes: List[gs.Node]) -> None:
+def _ensure_toposorted(nodes):
     index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
     for node_idx, node in enumerate(nodes):
         for tensor in node.inputs:
@@ -19,10 +10,10 @@ def _ensure_toposorted(nodes: List[gs.Node]) -> None:
 
 
 def _build_execution_order_map(
-    blocks: List[TileBlock],
-    schedule: List[Tuple[int, int]],
-    final_node: gs.Node,
-) -> Dict[int, int]:
+    blocks,
+    schedule,
+    final_node,
+):
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
     order_map = {}
     for block in blocks:
@@ -32,7 +23,7 @@ def _build_execution_order_map(
     return order_map
 
 
-def _order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -> List[gs.Node]:
+def _order_by_execution_order(nodes, order_map):
     indexed = list(enumerate(nodes))
     scheduled = [
         (order_map[id(node)], orig_pos, node)

@@ -13,7 +13,7 @@ from ts.config import GroupConfig
 from ts.rewrite import rewrite_model
 
 
-def _default_opset(model: onnx.ModelProto) -> int:
+def _default_opset(model):
     return next(int(imp.version) for imp in model.opset_import if not imp.domain)
 
 

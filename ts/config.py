@@ -1,38 +1,26 @@
-from __future__ import annotations
-
 import json
-from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Tuple
+from collections import namedtuple
 
-IndexPair = Tuple[int, int]
-ScheduleEntry = Tuple[int, int]
+GroupConfig = namedtuple("GroupConfig", ["node_range", "tile_count", "execution_order"])
 
 
-@dataclass(frozen=True)
-class GroupConfig:
-    node_range: IndexPair
-    tile_count: int
-    execution_order: List[ScheduleEntry]
-
-
-def _to_int(value: object, field: str) -> int:
+def _to_int(value, field):
     assert type(value) is int, f"{field} must be an integer; got {value!r}"
     return value
 
 
-def _to_tuple_pair(value: object, field: str) -> IndexPair:
+def _to_tuple_pair(value, field):
     assert isinstance(value, (list, tuple)) and len(value) == 2, (
         f"{field} must be a tuple/list of length 2; got {value!r}"
     )
     return _to_int(value[0], f"{field}[0]"), _to_int(value[1], f"{field}[1]")
 
 
-def _normalize_execution_order(execution_order: List[object]) -> List[ScheduleEntry]:
+def _normalize_execution_order(execution_order):
     return [_to_tuple_pair(entry, "execution_order entry") for entry in execution_order]
 
 
-def _validate_group(group: GroupConfig) -> None:
+def _validate_group(group):
     a, b = group.node_range
     assert not (a < 0 or b < 0 or b < a), (
         f"node_range must be non-negative and a <= b; got {group.node_range}"
@@ -56,13 +44,13 @@ def _validate_group(group: GroupConfig) -> None:
         )
 
 
-def _validate_ranges(groups: List[GroupConfig]) -> None:
+def _validate_ranges(groups):
     ranges_sorted = sorted(group.node_range for group in groups)
     for (a0, b0), (a1, b1) in zip(ranges_sorted[:-1], ranges_sorted[1:]):
         assert a1 > b0, f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
 
 
-def parse_config(path: str | Path) -> List[GroupConfig]:
+def parse_config(path):
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
 

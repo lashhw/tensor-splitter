@@ -1,11 +1,5 @@
-from __future__ import annotations
-
-from typing import Dict, List, Optional, Tuple
-
 import onnx_graphsurgeon as gs
 
-from ..config import GroupConfig
-from .analysis import GroupInfo
 from .catalog import TileBlock, _ensure_supported_op
 from .conv import _conv_params
 from .lowering import _build_tiled_op
@@ -15,13 +9,9 @@ from .tiling import ConvInputSlice, _conv_input_slice_for_output, _partition_ran
 
 
 def _plan_stage_ranges(
-    group_info: GroupInfo,
-    tile_count: int,
-) -> Tuple[
-    List[List[Tuple[int, int]]],
-    List[Optional[List[ConvInputSlice]]],
-    List[Optional[List[int]]],
-]:
+    group_info,
+    tile_count,
+):
     """
     Build per-stage required ranges with backward propagation from group output.
 
@@ -55,8 +45,8 @@ def _plan_stage_ranges(
         pad_top = pads[0]
         h_in = _tensor_height(node.inputs[main_idx])
 
-        in_ranges: List[Tuple[int, int]] = []
-        conv_slices: List[ConvInputSlice] = []
+        in_ranges = []
+        conv_slices = []
         for y0, y1 in out_ranges:
             slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
             in_ranges.append((slice_info.slice_start, slice_info.slice_end))
@@ -69,10 +59,10 @@ def _plan_stage_ranges(
 
 
 def _build_entry_tiles(
-    name_scope: NameScope,
-    entry: gs.Variable,
-    entry_ranges: List[Tuple[int, int]],
-) -> Tuple[List[gs.Variable], List[gs.Node]]:
+    name_scope,
+    entry,
+    entry_ranges,
+):
     tiles = []
     nodes = []
     for start, end in entry_ranges:
@@ -83,11 +73,11 @@ def _build_entry_tiles(
 
 
 def _build_group_tiles(
-    name_scope: NameScope,
-    group_info: GroupInfo,
-    group_cfg: GroupConfig,
-    node_index_map: Dict[int, int],
-) -> Tuple[List[gs.Node], List[TileBlock], gs.Variable, gs.Node]:
+    name_scope,
+    group_info,
+    group_cfg,
+    node_index_map,
+):
     for node in group_info.nodes:
         _ensure_supported_op(node)
 

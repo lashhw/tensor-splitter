@@ -1,7 +1,3 @@
-from __future__ import annotations
-
-from typing import Dict, Tuple
-
 import numpy as np
 import onnx
 import onnxruntime as ort
@@ -10,9 +6,9 @@ DEFAULT_VERIFY_RTOL = 1e-4
 DEFAULT_VERIFY_ATOL = 1e-5
 
 
-def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random.Generator) -> np.ndarray:
+def _make_input_array(name, value_info, rng):
     tensor_type = value_info.type.tensor_type
-    shape: list[int | None] = []
+    shape = []
     for dim in tensor_type.shape.dim:
         if dim.HasField("dim_value"):
             shape.append(dim.dim_value)
@@ -34,16 +30,16 @@ def _make_input_array(name: str, value_info: onnx.ValueInfoProto, rng: np.random
 
 
 def verify_model(
-    original: onnx.ModelProto,
-    rewritten: onnx.ModelProto,
-    rtol: float = DEFAULT_VERIFY_RTOL,
-    atol: float = DEFAULT_VERIFY_ATOL,
-) -> Tuple[bool, Dict[str, float]]:
+    original,
+    rewritten,
+    rtol=DEFAULT_VERIFY_RTOL,
+    atol=DEFAULT_VERIFY_ATOL,
+):
     sess_options = ort.SessionOptions()
     sess_original = ort.InferenceSession(original.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
     sess_rewritten = ort.InferenceSession(rewritten.SerializeToString(), sess_options, providers=["CPUExecutionProvider"])
 
-    inputs: Dict[str, np.ndarray] = {}
+    inputs = {}
     rng = np.random.default_rng(0)
     initializer_names = {init.name for init in original.graph.initializer}
     for inp in original.graph.input:
@@ -58,7 +54,7 @@ def verify_model(
         "output count mismatch between original and rewritten models"
     )
 
-    diffs: Dict[str, float] = {}
+    diffs = {}
     ok = True
     for idx, (orig, new) in enumerate(zip(orig_outs, new_outs)):
         name = original.graph.output[idx].name

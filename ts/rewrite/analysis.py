@@ -1,22 +1,15 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import List, Tuple
-
-import onnx_graphsurgeon as gs
+from collections import namedtuple
 
 from .tensor import _is_constant
 
 
-@dataclass(frozen=True)
-class GroupInfo:
-    node_range: Tuple[int, int]
-    nodes: List[gs.Node]
-    entry_tensor: gs.Variable
-    exit_tensor: gs.Variable
-    main_input_indices: List[int]
+GroupInfo = namedtuple(
+    "GroupInfo",
+    ["node_range", "nodes", "entry_tensor", "exit_tensor", "main_input_indices"],
+)
 
-def _analyze_group(nodes: List[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
+
+def _analyze_group(nodes, node_range):
     a, b = node_range
     assert not (a < 0 or b >= len(nodes) or b < a), (
         f"invalid group node_range {node_range} for graph with {len(nodes)} nodes"

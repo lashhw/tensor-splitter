@@ -1,19 +1,13 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Set
-
-
-@dataclass
 class NameScope:
-    existing: Set[str]
-    counter: int = 0
+    def __init__(self, existing, counter=0):
+        self.existing = existing
+        self.counter = counter
 
     @classmethod
-    def from_existing(cls, existing: Set[str]) -> "NameScope":
+    def from_existing(cls, existing):
         return cls(set(existing))
 
-    def make(self, base: str) -> str:
+    def make(self, base):
         name = f"{base}_{self.counter}"
         self.counter += 1
         while name in self.existing:

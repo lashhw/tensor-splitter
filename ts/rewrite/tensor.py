@@ -1,42 +1,36 @@
-from __future__ import annotations
-
-from typing import Any, List, Tuple
-
 import numpy as np
 import onnx_graphsurgeon as gs
 
-from .naming import NameScope
 
-
-def _is_constant(tensor: gs.Tensor) -> bool:
+def _is_constant(tensor):
     return isinstance(tensor, gs.Constant)
 
 
-def _tensor_height(tensor: gs.Tensor) -> int:
+def _tensor_height(tensor):
     return tensor.shape[2]
 
 
 def _shape_with_dim_size(
-    shape: List[Any],
-    dim: int,
-    size: int,
-) -> List[Any]:
+    shape,
+    dim,
+    size,
+):
     new_shape = list(shape)
     new_shape[dim] = size
     return new_shape
 
 
-def _make_constant(name_scope: NameScope, values: np.ndarray) -> gs.Constant:
+def _make_constant(name_scope, values):
     return gs.Constant(name_scope.make("tsplit_const"), values)
 
 
 def _make_slice(
-    name_scope: NameScope,
-    data: gs.Tensor,
-    start: int,
-    end: int,
-    axis: int,
-) -> Tuple[gs.Variable, gs.Node]:
+    name_scope,
+    data,
+    start,
+    end,
+    axis,
+):
     starts = _make_constant(name_scope, np.array([start], dtype=np.int64))
     ends = _make_constant(name_scope, np.array([end], dtype=np.int64))
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
@@ -51,11 +45,11 @@ def _make_slice(
 
 
 def _make_concat(
-    name_scope: NameScope,
-    inputs: List[gs.Tensor],
-    axis: int,
-    shape: List[Any],
-) -> Tuple[gs.Variable, gs.Node]:
+    name_scope,
+    inputs,
+    axis,
+    shape,
+):
     out_shape = list(shape)
     out = gs.Variable(name_scope.make("tsplit_concat"), dtype=inputs[0].dtype, shape=out_shape)
     node = gs.Node(op="Concat", inputs=inputs, outputs=[out], attrs={"axis": axis})

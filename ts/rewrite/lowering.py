@@ -1,25 +1,19 @@
-from __future__ import annotations
-
-from typing import List, Optional, Tuple
-
 import onnx_graphsurgeon as gs
 
 from .catalog import TileBlock
 from .conv import _conv_attrs_with_height_pad
-from .naming import NameScope
 from .tensor import _shape_with_dim_size
-from .tiling import ConvInputSlice
 
 def _build_conv_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Variable],
-    out_ranges: List[Tuple[int, int]],
-    conv_slices: List[ConvInputSlice],
-    conv_base_pads: List[int],
-    main_input_index: int,
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    out_ranges,
+    conv_slices,
+    conv_base_pads,
+    main_input_index,
+):
     out_tiles = []
     new_nodes = []
     blocks = []
@@ -52,12 +46,12 @@ def _build_conv_tiles(
 
 
 def _build_non_conv_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Variable],
-    main_input_index: int,
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    main_input_index,
+):
     out_tiles = []
     new_nodes = []
     blocks = []
@@ -87,15 +81,15 @@ def _build_non_conv_tiles(
 
 
 def _build_tiled_op(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: List[gs.Variable],
-    out_ranges: List[Tuple[int, int]],
-    main_idx: int,
-    conv_slices: Optional[List[ConvInputSlice]] = None,
-    conv_base_pads: Optional[List[int]] = None,
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
+    name_scope,
+    node,
+    orig_index,
+    tiles,
+    out_ranges,
+    main_idx,
+    conv_slices=None,
+    conv_base_pads=None,
+):
     if node.op == "Conv":
         return _build_conv_tiles(name_scope, node, orig_index, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
     else:

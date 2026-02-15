@@ -31,7 +31,7 @@ def _make_add_one_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
-def _make_two_input_sub_model(swap_inputs: bool = False):
+def _make_two_input_sub_model(swap_inputs=False):
     a = gs.Variable("a", dtype=np.float32, shape=[1, 1, 2, 2])
     b = gs.Variable("b", dtype=np.float32, shape=[1, 1, 2, 2])
     out = gs.Variable("out", dtype=np.float32, shape=[1, 1, 2, 2])
