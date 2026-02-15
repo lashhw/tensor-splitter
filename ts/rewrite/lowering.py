@@ -161,11 +161,6 @@ def _build_tiled_op(
     main_idx: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     if node.op == "Conv":
-        next_tiles, new_nodes, blocks = _build_conv_tiles(
-            name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx
-        )
-        return next_tiles, new_nodes, blocks
-    assert in_ranges == out_ranges, (
-        f"node {node.name or node.op} requires unchanged ranges, got {in_ranges} -> {out_ranges}"
-    )
-    return _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
+        return _build_conv_tiles(name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx)
+    else:
+        return _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
