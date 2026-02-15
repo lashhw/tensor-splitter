@@ -1,33 +1,10 @@
 import onnx
 import onnx_graphsurgeon as gs
 
-from .analysis import _analyze_group
-from .assembly import _build_group
-from .ordering import _ensure_toposorted
+from .analysis import _analyze_group, _ensure_toposorted
+from .assembly import _apply_group, _build_group
 
 _TARGET_OPSET = 11
-
-
-def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
-    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
-    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
-
-    for consumer in list(group_info.exit_tensor.outputs):
-        for idx, inp in enumerate(consumer.inputs):
-            if inp is group_info.exit_tensor:
-                consumer.inputs[idx] = concat_out
-
-    for idx, out in enumerate(graph.outputs):
-        if out is group_info.exit_tensor:
-            graph.outputs[idx] = concat_out
-
-    for node in group_info.nodes:
-        node.inputs = []
-        node.outputs = []
-
-    graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
 
 
 def rewrite_model(model, groups):

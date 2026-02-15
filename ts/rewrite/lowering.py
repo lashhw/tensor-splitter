@@ -1,7 +1,6 @@
 import onnx_graphsurgeon as gs
 
-from .conv import _conv_attrs_with_height_pad
-from .tensor import _shape_with_dim_size
+from .conv import _build_conv_tiles
 
 
 def _node_base_name(node):
@@ -10,43 +9,6 @@ def _node_base_name(node):
     if node.outputs and node.outputs[0].name:
         return node.outputs[0].name
     return node.op
-
-
-def _build_conv_tiles(
-    node,
-    tiles,
-    out_ranges,
-    conv_slices,
-    conv_base_pads,
-    main_input_index,
-):
-    out_tiles = []
-    new_nodes = []
-
-    for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        new_pads = [slice_info.pad_top, conv_base_pads[1], slice_info.pad_bottom, conv_base_pads[3]]
-        attrs = _conv_attrs_with_height_pad(node, new_pads)
-        conv_inputs = list(node.inputs)
-        conv_inputs[main_input_index] = tile
-
-        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
-        conv_out = gs.Variable(
-            f"{node.outputs[0].name}_split{tile_id}",
-            dtype=node.outputs[0].dtype,
-            shape=out_shape,
-        )
-        out_tiles.append(conv_out)
-
-        conv_node = gs.Node(
-            name=f"{_node_base_name(node)}_split{tile_id}",
-            op="Conv",
-            inputs=conv_inputs,
-            outputs=[conv_out],
-            attrs=attrs
-        )
-        new_nodes.append(conv_node)
-
-    return out_tiles, new_nodes
 
 
 def _build_non_conv_tiles(

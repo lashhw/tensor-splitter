@@ -1,9 +1,20 @@
-from .catalog import _ensure_supported_op
-from .conv import _conv_params
+from .analysis import _ensure_supported_op, _ensure_toposorted
+from .conv import _conv_input_slice_for_output, _conv_params
 from .lowering import _build_tiled_op
 from .tensor import _make_concat, _make_slice, _tensor_height
-from .tiling import _conv_input_slice_for_output, _partition_ranges
-from .ordering import _ensure_toposorted
+
+
+def _partition_ranges(total, tile_count):
+    base = total // tile_count
+    rem = total % tile_count
+    ranges = []
+    start = 0
+    for i in range(tile_count):
+        size = base + (1 if i < rem else 0)
+        end = start + size
+        ranges.append((start, end))
+        start = end
+    return ranges
 
 
 def _plan_stage_ranges(group_info, tile_count):
@@ -99,6 +110,28 @@ def _build_entry_tiles(entry, entry_ranges, first_orig_index, place_node):
         tiles.append(tile)
         place_node(first_orig_index, tile_id, node)
     return tiles
+
+
+def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
+    node_a = orig_nodes[group_cfg.node_range[0]]
+    node_b = orig_nodes[group_cfg.node_range[1]]
+    start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
+    end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
+
+    for consumer in list(group_info.exit_tensor.outputs):
+        for idx, inp in enumerate(consumer.inputs):
+            if inp is group_info.exit_tensor:
+                consumer.inputs[idx] = concat_out
+
+    for idx, out in enumerate(graph.outputs):
+        if out is group_info.exit_tensor:
+            graph.outputs[idx] = concat_out
+
+    for node in group_info.nodes:
+        node.inputs = []
+        node.outputs = []
+
+    graph.nodes = graph.nodes[:start_pos] + new_nodes + graph.nodes[end_pos + 1 :]
 
 
 def _build_group(group_info, group_cfg, node_index_map):

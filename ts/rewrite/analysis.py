@@ -2,11 +2,28 @@ from collections import namedtuple
 
 from .tensor import _is_constant
 
+SUPPORTED_NON_CONV_OPS = {"Relu", "BatchNormalization"}
+SUPPORTED_GROUP_OPS = SUPPORTED_NON_CONV_OPS | {"Conv"}
 
 GroupInfo = namedtuple(
     "GroupInfo",
     ["node_range", "nodes", "entry_tensor", "exit_tensor", "main_input_indices"],
 )
+
+
+def _ensure_toposorted(nodes):
+    index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
+    for node_idx, node in enumerate(nodes):
+        for tensor in node.inputs:
+            for producer in tensor.inputs:
+                producer_idx = index.get(id(producer))
+                if producer_idx is None:
+                    continue
+                assert producer_idx <= node_idx, "graph nodes are not topologically sorted"
+
+
+def _ensure_supported_op(node):
+    assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
 
 
 def _analyze_group(nodes, node_range):
