@@ -20,14 +20,12 @@ def _build_group(group_info, group_cfg, node_index_map):
         main_idx = group_info.main_input_indices[stage_idx]
         out_ranges = stage_plan.stage_ranges[stage_idx + 1]
         conv_slices = stage_plan.conv_slices_by_stage[stage_idx]
-        conv_spec = stage_plan.conv_specs_by_stage[stage_idx]
         tiles, op_nodes = _build_stage_tiles(
             node,
             tiles,
             out_ranges,
             main_idx,
             conv_slices=conv_slices,
-            conv_spec=conv_spec,
         )
         for tile_id, op_node in enumerate(op_nodes):
             place_node(orig_index, tile_id, op_node)

@@ -65,12 +65,6 @@ def test_plan_stage_ranges_backpropagates_and_tracks_conv_metadata():
     assert stage_plan.stage_ranges[1] == [(0, 4), (3, 8)]
     assert stage_plan.stage_ranges[0] == [(0, 5), (2, 8)]
 
-    assert stage_plan.conv_specs_by_stage[0] is not None
-    assert stage_plan.conv_specs_by_stage[1] is None
-    assert stage_plan.conv_specs_by_stage[2] is not None
-    assert stage_plan.conv_specs_by_stage[0].strides == [1, 1]
-    assert stage_plan.conv_specs_by_stage[2].strides == [2, 1]
-
     assert stage_plan.conv_slices_by_stage[0] is not None
     assert stage_plan.conv_slices_by_stage[1] is None
     assert stage_plan.conv_slices_by_stage[2] is not None

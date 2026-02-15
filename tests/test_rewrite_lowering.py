@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ts.rewrite.conv import ConvInputSlice, _parse_conv_spec
+from ts.rewrite.conv import ConvInputSlice
 from ts.rewrite.lowering import _build_entry_tiles, _build_group_concat, _build_stage_tiles
 
 
@@ -67,7 +67,6 @@ def test_build_stage_tiles_for_non_conv_propagates_tile_shapes():
 
 def test_build_stage_tiles_for_conv_rewrites_height_pads():
     conv = _make_conv_node()
-    conv_spec = _parse_conv_spec(conv)
     tiles = [
         gs.Variable("t0", dtype=np.float32, shape=[1, 3, 4, 8]),
         gs.Variable("t1", dtype=np.float32, shape=[1, 3, 5, 8]),
@@ -83,7 +82,6 @@ def test_build_stage_tiles_for_conv_rewrites_height_pads():
         out_ranges=[(0, 2), (2, 4)],
         main_input_index=0,
         conv_slices=conv_slices,
-        conv_spec=conv_spec,
     )
 
     assert [node.op for node in conv_nodes] == ["Conv", "Conv"]

@@ -32,9 +32,9 @@ def _parse_conv_spec(node):
     return ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
 
 
-def _conv_attrs_with_height_pad(node, base_pads, slice_info):
-    attrs = dict(node.attrs) if node.attrs else {}
-    attrs["pads"] = [slice_info.pad_top, base_pads[1], slice_info.pad_bottom, base_pads[3]]
+def _conv_attrs_with_height_pad(node, slice_info):
+    attrs = dict(node.attrs)
+    attrs["pads"] = [slice_info.pad_top, attrs["pads"][1], slice_info.pad_bottom, attrs["pads"][3]]
     return attrs
 
 

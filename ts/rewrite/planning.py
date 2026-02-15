@@ -5,7 +5,7 @@ from .tensor import _tensor_height
 
 StagePlan = namedtuple(
     "StagePlan",
-    ["stage_ranges", "conv_slices_by_stage", "conv_specs_by_stage"],
+    ["stage_ranges", "conv_slices_by_stage"],
 )
 
 
@@ -34,7 +34,6 @@ def _plan_stage_ranges(group_info, tile_count):
     stage_ranges[-1] = _partition_ranges(_tensor_height(group_info.exit_tensor), tile_count)
 
     conv_slices_by_stage = [None for _ in range(stage_count - 1)]
-    conv_specs_by_stage = [None for _ in range(stage_count - 1)]
 
     for stage_idx in range(stage_count - 2, -1, -1):
         node = group_info.nodes[stage_idx]
@@ -57,12 +56,10 @@ def _plan_stage_ranges(group_info, tile_count):
 
         stage_ranges[stage_idx] = in_ranges
         conv_slices_by_stage[stage_idx] = conv_slices
-        conv_specs_by_stage[stage_idx] = spec
 
     return StagePlan(
         stage_ranges=stage_ranges,
         conv_slices_by_stage=conv_slices_by_stage,
-        conv_specs_by_stage=conv_specs_by_stage,
     )
 
 

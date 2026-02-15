@@ -50,7 +50,6 @@ def _build_conv_tiles(
     tiles,
     out_ranges,
     conv_slices,
-    conv_spec,
     main_input_index,
 ):
     out_tiles = []
@@ -58,7 +57,7 @@ def _build_conv_tiles(
     node_base_name = _node_base_name(node)
 
     for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        attrs = _conv_attrs_with_height_pad(node, conv_spec.pads, slice_info)
+        attrs = _conv_attrs_with_height_pad(node, slice_info)
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
 
@@ -119,12 +118,10 @@ def _build_stage_tiles(
     out_ranges,
     main_input_index,
     conv_slices=None,
-    conv_spec=None,
 ):
     if node.op == "Conv":
         assert conv_slices is not None, "conv_slices are required for Conv lowering"
-        assert conv_spec is not None, "conv_spec is required for Conv lowering"
-        return _build_conv_tiles(node, tiles, out_ranges, conv_slices, conv_spec, main_input_index)
+        return _build_conv_tiles(node, tiles, out_ranges, conv_slices, main_input_index)
     return _build_non_conv_tiles(node, tiles, main_input_index)
 
 
