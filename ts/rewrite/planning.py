@@ -42,11 +42,6 @@ def _plan_stage_ranges(group_info, tile_count):
         main_idx = group_info.main_input_indices[stage_idx]
 
         if node.op != "Conv":
-            h_in = _tensor_height(node.inputs[main_idx])
-            h_out = _tensor_height(node.outputs[0])
-            assert h_in == h_out, (
-                f"node {node.name or node.op} changes height ({h_in}->{h_out}) but is not Conv"
-            )
             stage_ranges[stage_idx] = list(out_ranges)
             continue
 

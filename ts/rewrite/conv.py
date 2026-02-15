@@ -9,27 +9,24 @@ ConvInputSlice = namedtuple(
 )
 
 
-def _get_attr(node, name, default=None):
-    if node.attrs is None:
-        return default
-    return node.attrs.get(name, default)
+def _get_attr(node, name):
+    return node.attrs[name]
 
 
-def _as_int_list(value, *, name, length):
-    assert value is not None, f"Conv attribute {name} is required"
-    assert isinstance(value, list), f"Conv attribute {name} must be a list; got {value!r}"
-    assert len(value) == length, f"Conv attribute {name} must have length {length}; got {value}"
+def _ensure_list(value, length):
+    assert isinstance(value, list)
+    assert len(value) == length
     return value
 
 
 def _parse_conv_spec(node):
-    attrs = node.attrs or {}
-    assert "auto_pad" not in attrs, "Conv auto_pad must be unset in attrs"
+    attrs = node.attrs
 
-    kernel_shape = _as_int_list(_get_attr(node, "kernel_shape"), name="kernel_shape", length=2)
-    strides = _as_int_list(_get_attr(node, "strides"), name="strides", length=2)
-    dilations = _as_int_list(_get_attr(node, "dilations"), name="dilations", length=2)
-    pads = _as_int_list(_get_attr(node, "pads"), name="pads", length=4)
+    assert "auto_pad" not in attrs, "Conv auto_pad must be unset in attrs"
+    kernel_shape = _ensure_list(attrs["kernel_shape"], length=2)
+    strides = _ensure_list(attrs["strides"], length=2)
+    dilations = _ensure_list(attrs["dilations"], length=2)
+    pads = _ensure_list(attrs["pads"], length=4)
     assert dilations == [1, 1], f"Conv dilations {dilations} are not supported; expected [1, 1]"
 
     return ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
