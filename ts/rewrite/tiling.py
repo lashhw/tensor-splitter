@@ -44,19 +44,15 @@ def _conv_input_slice_for_output(
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + kernel
 
-    # Clamp both bounds into [0, h_in] to avoid inverted ranges when output
-    # tiles map fully outside the original tensor and rely only on padding.
-    slice_start = min(max(0, x0), h_in)
-    slice_end = min(max(0, x1), h_in)
-
-    pad_top_local = max(0, -x0)
-    pad_bottom_local = max(0, x1 - h_in)
+    slice_start = max(0, x0)
+    slice_end = min(x1, h_in)
+    assert slice_start <= slice_end
 
     return ConvInputSlice(
         slice_start=slice_start,
         slice_end=slice_end,
-        pad_top=pad_top_local,
-        pad_bottom=pad_bottom_local,
+        pad_top=max(0, -x0),
+        pad_bottom=max(0, x1 - h_in),
     )
 
 

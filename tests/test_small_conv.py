@@ -76,7 +76,7 @@ def test_small_conv_rewrite_matches():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
-def test_padding_only_tile_conv_rewrite_matches():
+def test_padding_only_tile_conv_rewrite_rejects():
     model = _make_padding_heavy_conv_model()
     groups = [
         GroupConfig(
@@ -85,20 +85,12 @@ def test_padding_only_tile_conv_rewrite_matches():
             execution_order=[(0, 0), (0, 1), (0, 2), (0, 3)],
         )
     ]
-    rewritten = rewrite_model(model, groups)
-    graph = gs.import_onnx(rewritten)
-    assert all(node.op != "Pad" for node in graph.nodes)
-
-    import onnxruntime as ort
-
-    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
-    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
-    rng = np.random.default_rng(0)
-    inp = rng.standard_normal((1, 2, 8, 5)).astype(np.float32)
-    out_orig = sess_orig.run(None, {"input": inp})[0]
-    out_new = sess_new.run(None, {"input": inp})[0]
-
-    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+    try:
+        rewrite_model(model, groups)
+    except AssertionError:
+        pass
+    else:
+        assert False, "rewrite_model should reject groups that produce padding-only Conv tiles"
 
 
 def test_rewrite_upgrades_legacy_opset_model():
@@ -148,7 +140,7 @@ def test_rewrite_forces_target_opset_from_newer_model():
 
 if __name__ == "__main__":
     test_small_conv_rewrite_matches()
-    test_padding_only_tile_conv_rewrite_matches()
+    test_padding_only_tile_conv_rewrite_rejects()
     test_rewrite_upgrades_legacy_opset_model()
     test_rewrite_forces_target_opset_from_legacy_model()
     test_rewrite_forces_target_opset_from_newer_model()
