@@ -59,6 +59,28 @@ def _make_padding_heavy_conv_model():
     return onnx.shape_inference.infer_shapes(model)
 
 
+def _make_auto_pad_notset_conv_model():
+    inp = gs.Variable("input_auto_pad", dtype=np.float32, shape=[1, 3, 8, 8])
+    weight = gs.Constant("W_auto_pad", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
+    bias = gs.Constant("B_auto_pad", values=np.random.randn(4).astype(np.float32))
+    conv_out = gs.Variable("conv_out_auto_pad", dtype=np.float32, shape=[1, 4, 8, 8])
+    conv = gs.Node(
+        op="Conv",
+        inputs=[inp, weight, bias],
+        outputs=[conv_out],
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [1, 1],
+            "auto_pad": "NOTSET",
+        },
+    )
+    graph = gs.Graph(nodes=[conv], inputs=[inp], outputs=[conv_out])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
 def test_small_conv_rewrite_matches():
     model = _make_conv_model()
     groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
@@ -91,6 +113,18 @@ def test_padding_only_tile_conv_rewrite_rejects():
         pass
     else:
         assert False, "rewrite_model should reject groups that produce padding-only Conv tiles"
+
+
+def test_rewrite_rejects_conv_with_auto_pad_attr():
+    model = _make_auto_pad_notset_conv_model()
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+
+    try:
+        rewrite_model(model, groups)
+    except AssertionError as exc:
+        assert "auto_pad" in str(exc)
+    else:
+        assert False, "rewrite_model should reject Conv nodes with auto_pad in attrs"
 
 
 def test_rewrite_upgrades_legacy_opset_model():
@@ -141,6 +175,7 @@ def test_rewrite_forces_target_opset_from_newer_model():
 if __name__ == "__main__":
     test_small_conv_rewrite_matches()
     test_padding_only_tile_conv_rewrite_rejects()
+    test_rewrite_rejects_conv_with_auto_pad_attr()
     test_rewrite_upgrades_legacy_opset_model()
     test_rewrite_forces_target_opset_from_legacy_model()
     test_rewrite_forces_target_opset_from_newer_model()

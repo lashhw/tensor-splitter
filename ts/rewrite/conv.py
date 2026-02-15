@@ -23,8 +23,8 @@ def _as_int_list(value: Any, *, name: str, length: Optional[int] = None) -> List
 
 
 def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int]]:
-    auto_pad = _get_attr(node, "auto_pad", "NOTSET")
-    assert auto_pad in (None, "NOTSET", ""), f"Conv auto_pad {auto_pad} is not supported"
+    attrs = node.attrs or {}
+    assert "auto_pad" not in attrs, "Conv auto_pad must be unset in attrs"
 
     kernel_shape = _as_int_list(_get_attr(node, "kernel_shape"), name="kernel_shape", length=2)
     strides = _as_int_list(_get_attr(node, "strides"), name="strides", length=2)
@@ -38,6 +38,4 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int]]:
 def _conv_attrs_with_height_pad(node: gs.Node, pads: List[int]) -> Dict[str, Any]:
     attrs = dict(node.attrs) if node.attrs else {}
     attrs["pads"] = pads
-    if "auto_pad" in attrs:
-        attrs["auto_pad"] = "NOTSET"
     return attrs
