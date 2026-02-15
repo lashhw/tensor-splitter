@@ -31,7 +31,7 @@ def _build_conv_tiles(
     pad_top = pads[0]
 
     out_tiles = []
-    new_nodes: List[gs.Node] = []
+    new_nodes = []
     blocks = []
 
     for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
@@ -92,8 +92,8 @@ def _build_conv_tiles(
             conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
             block_nodes.append(conv_trim_node)
 
-        new_nodes.extend(block_nodes)
         out_tiles.append(conv_out)
+        new_nodes.extend(block_nodes)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
 
     return out_tiles, new_nodes, blocks
