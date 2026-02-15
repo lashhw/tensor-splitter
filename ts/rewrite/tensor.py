@@ -26,9 +26,6 @@ def _clone_shape_with_height(
     axis: int,
     height: int,
 ) -> Optional[List[Any]]:
-    if shape is None:
-        return None
-    assert len(shape) > axis, f"shape rank {len(shape)} is too small for axis {axis}"
     new_shape = list(shape)
     new_shape[axis] = height
     return new_shape

@@ -36,28 +36,23 @@ def _build_conv_tiles(
     blocks = []
 
     for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        block_nodes = []
-
         new_pads = [slice_info.pad_top, pads[1], slice_info.pad_bottom, pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
 
-        expected = y1 - y0
-
-        out_shape = None
-        if node.outputs[0].shape is not None:
-            out_shape = _clone_shape_with_height(node.outputs[0].shape, 2, expected)
+        out_shape = _clone_shape_with_height(node.outputs[0].shape, 2, y1 - y0)
         conv_out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
             dtype=node.outputs[0].dtype,
             shape=out_shape,
         )
-        conv_node = gs.Node(op="Conv", inputs=conv_inputs, outputs=[conv_out], attrs=attrs)
-        block_nodes.append(conv_node)
-
         out_tiles.append(conv_out)
+
+        conv_node = gs.Node(op="Conv", inputs=conv_inputs, outputs=[conv_out], attrs=attrs)
+        block_nodes = [conv_node]
         new_nodes.extend(block_nodes)
+
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
 
     return out_tiles, new_nodes, blocks
