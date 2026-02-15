@@ -3,7 +3,6 @@ import onnx_graphsurgeon as gs
 
 from .analysis import _analyze_group
 from .assembly import _build_group
-from .naming import NameScope
 from .ordering import _ensure_toposorted
 
 _TARGET_OPSET = 11
@@ -40,11 +39,10 @@ def rewrite_model(model, groups):
 
     groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
     node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
-    name_scope = NameScope.from_existing(set(graph.tensors().keys()))
 
     for group_cfg in groups_sorted:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, concat_out = _build_group(name_scope, group_info, group_cfg, node_index_map)
+        new_nodes, concat_out = _build_group(group_info, group_cfg, node_index_map)
         _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out)
 
     out_model = gs.export_onnx(graph)

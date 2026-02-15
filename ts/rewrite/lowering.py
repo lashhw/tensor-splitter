@@ -3,8 +3,16 @@ import onnx_graphsurgeon as gs
 from .conv import _conv_attrs_with_height_pad
 from .tensor import _shape_with_dim_size
 
+
+def _node_base_name(node):
+    if node.name:
+        return node.name
+    if node.outputs and node.outputs[0].name:
+        return node.outputs[0].name
+    return node.op
+
+
 def _build_conv_tiles(
-    name_scope,
     node,
     tiles,
     out_ranges,
@@ -23,13 +31,14 @@ def _build_conv_tiles(
 
         out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
         conv_out = gs.Variable(
-            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
+            f"{node.outputs[0].name}_split{tile_id}",
             dtype=node.outputs[0].dtype,
             shape=out_shape,
         )
         out_tiles.append(conv_out)
 
         conv_node = gs.Node(
+            name=f"{_node_base_name(node)}_split{tile_id}",
             op="Conv",
             inputs=conv_inputs,
             outputs=[conv_out],
@@ -41,7 +50,6 @@ def _build_conv_tiles(
 
 
 def _build_non_conv_tiles(
-    name_scope,
     node,
     tiles,
     main_input_index,
@@ -54,13 +62,14 @@ def _build_non_conv_tiles(
         inputs[main_input_index] = tile
 
         out = gs.Variable(
-            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
+            f"{node.outputs[0].name}_split{tile_id}",
             dtype=node.outputs[0].dtype,
             shape=tile.shape,
         )
         out_tiles.append(out)
 
         new_node = gs.Node(
+            name=f"{_node_base_name(node)}_split{tile_id}",
             op=node.op,
             inputs=inputs,
             outputs=[out],
@@ -72,7 +81,6 @@ def _build_non_conv_tiles(
 
 
 def _build_tiled_op(
-    name_scope,
     node,
     tiles,
     out_ranges,
@@ -81,6 +89,6 @@ def _build_tiled_op(
     conv_base_pads=None,
 ):
     if node.op == "Conv":
-        return _build_conv_tiles(name_scope, node, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
+        return _build_conv_tiles(node, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
     else:
-        return _build_non_conv_tiles(name_scope, node, tiles, main_idx)
+        return _build_non_conv_tiles(node, tiles, main_idx)

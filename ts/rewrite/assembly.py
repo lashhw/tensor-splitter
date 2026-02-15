@@ -92,23 +92,23 @@ def _build_ordered_node_writer(schedule, first_orig_index):
     return place_node, finalize_nodes
 
 
-def _build_entry_tiles(name_scope, entry, entry_ranges, first_orig_index, place_node):
+def _build_entry_tiles(entry, entry_ranges, first_orig_index, place_node):
     tiles = []
     for tile_id, (start, end) in enumerate(entry_ranges):
-        tile, node = _make_slice(name_scope, entry, start, end, 2)
+        tile, node = _make_slice(entry, start, end, 2, tile_id)
         tiles.append(tile)
         place_node(first_orig_index, tile_id, node)
     return tiles
 
 
-def _build_group(name_scope, group_info, group_cfg, node_index_map):
+def _build_group(group_info, group_cfg, node_index_map):
     for node in group_info.nodes:
         _ensure_supported_op(node)
 
     stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage = _plan_stage_ranges(group_info, group_cfg.tile_count)
     first_orig_index = node_index_map[id(group_info.nodes[0])]
     place_node, finalize_nodes = _build_ordered_node_writer(group_cfg.execution_order, first_orig_index)
-    tiles = _build_entry_tiles(name_scope, group_info.entry_tensor, stage_ranges[0], first_orig_index, place_node)
+    tiles = _build_entry_tiles(group_info.entry_tensor, stage_ranges[0], first_orig_index, place_node)
 
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
@@ -116,13 +116,16 @@ def _build_group(name_scope, group_info, group_cfg, node_index_map):
         out_ranges = stage_ranges[stage_idx + 1]
         conv_slices = conv_slices_by_stage[stage_idx]
         conv_base_pads = conv_base_pads_by_stage[stage_idx]
-        tiles, op_nodes = _build_tiled_op(
-            name_scope, node, tiles, out_ranges, main_idx, conv_slices, conv_base_pads
-        )
+        tiles, op_nodes = _build_tiled_op(node, tiles, out_ranges, main_idx, conv_slices, conv_base_pads)
         for tile_id, op_node in enumerate(op_nodes):
             place_node(orig_index, tile_id, op_node)
 
-    concat_out, concat_node = _make_concat(name_scope, tiles, 2, group_info.exit_tensor.shape)
+    concat_out, concat_node = _make_concat(
+        tiles,
+        2,
+        group_info.exit_tensor.shape,
+        group_info.exit_tensor.name,
+    )
     ordered_nodes = finalize_nodes(concat_node)
     _ensure_toposorted(ordered_nodes)
 
