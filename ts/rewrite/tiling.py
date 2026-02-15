@@ -40,7 +40,6 @@ def _conv_input_slice_for_output(
     h_in: int,
 ) -> ConvInputSlice:
     assert y1 > y0, f"empty or invalid Conv output range [{y0},{y1}) is not supported"
-    assert h_in >= 0, f"invalid input height {h_in}"
 
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + kernel
