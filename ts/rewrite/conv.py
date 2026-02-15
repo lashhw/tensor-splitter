@@ -1,8 +1,6 @@
 from collections import namedtuple
 
-import onnx_graphsurgeon as gs
-
-from .tensor import _shape_with_dim_size
+ConvSpec = namedtuple("ConvSpec", ["kernel_shape", "strides", "pads"])
 
 
 ConvInputSlice = namedtuple(
@@ -24,7 +22,7 @@ def _as_int_list(value, *, name, length):
     return value
 
 
-def _conv_params(node):
+def _parse_conv_spec(node):
     attrs = node.attrs or {}
     assert "auto_pad" not in attrs, "Conv auto_pad must be unset in attrs"
 
@@ -34,18 +32,22 @@ def _conv_params(node):
     pads = _as_int_list(_get_attr(node, "pads"), name="pads", length=4)
     assert dilations == [1, 1], f"Conv dilations {dilations} are not supported; expected [1, 1]"
 
-    return kernel_shape, strides, pads
+    return ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
 
 
-def _conv_attrs_with_height_pad(node, pads):
+def _conv_attrs_with_height_pad(node, base_pads, slice_info):
     attrs = dict(node.attrs) if node.attrs else {}
-    attrs["pads"] = pads
+    attrs["pads"] = [slice_info.pad_top, base_pads[1], slice_info.pad_bottom, base_pads[3]]
     return attrs
 
 
-def _conv_input_slice_for_output(y0, y1, stride, kernel, pad_top, h_in):
-    x0 = y0 * stride - pad_top
-    x1 = (y1 - 1) * stride - pad_top + kernel
+def _conv_input_slice_for_output(y0, y1, spec, h_in):
+    k_h = spec.kernel_shape[0]
+    s_h = spec.strides[0]
+    pad_top = spec.pads[0]
+
+    x0 = y0 * s_h - pad_top
+    x1 = (y1 - 1) * s_h - pad_top + k_h
 
     slice_start = max(0, x0)
     slice_end = min(x1, h_in)
@@ -57,41 +59,3 @@ def _conv_input_slice_for_output(y0, y1, stride, kernel, pad_top, h_in):
         pad_top=max(0, -x0),
         pad_bottom=max(0, x1 - h_in),
     )
-
-
-def _build_conv_tiles(
-    node,
-    tiles,
-    out_ranges,
-    conv_slices,
-    conv_base_pads,
-    main_input_index,
-):
-    out_tiles = []
-    new_nodes = []
-    node_base_name = node.name or (node.outputs[0].name if node.outputs and node.outputs[0].name else node.op)
-
-    for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        new_pads = [slice_info.pad_top, conv_base_pads[1], slice_info.pad_bottom, conv_base_pads[3]]
-        attrs = _conv_attrs_with_height_pad(node, new_pads)
-        conv_inputs = list(node.inputs)
-        conv_inputs[main_input_index] = tile
-
-        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
-        conv_out = gs.Variable(
-            f"{node.outputs[0].name}_split{tile_id}",
-            dtype=node.outputs[0].dtype,
-            shape=out_shape,
-        )
-        out_tiles.append(conv_out)
-
-        conv_node = gs.Node(
-            name=f"{node_base_name}_split{tile_id}",
-            op="Conv",
-            inputs=conv_inputs,
-            outputs=[conv_out],
-            attrs=attrs,
-        )
-        new_nodes.append(conv_node)
-
-    return out_tiles, new_nodes
