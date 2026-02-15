@@ -86,6 +86,8 @@ def test_padding_only_tile_conv_rewrite_matches():
         )
     ]
     rewritten = rewrite_model(model, groups)
+    graph = gs.import_onnx(rewritten)
+    assert all(node.op != "Pad" for node in graph.nodes)
 
     import onnxruntime as ort
 

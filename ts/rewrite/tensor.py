@@ -77,31 +77,3 @@ def _make_concat(
     node = gs.Node(op="Concat", inputs=inputs, outputs=[out], attrs={"axis": axis})
     return out, node
 
-
-def _make_pad(
-    name_scope: NameScope,
-    data: gs.Tensor,
-    pad_top: int,
-    pad_bottom: int,
-) -> Tuple[gs.Variable, gs.Node]:
-    assert hasattr(data, "shape") and data.shape is not None, (
-        f"Pad expects static tensor shape for {data.name}"
-    )
-    assert len(data.shape) == 4, f"Pad expects 4D NCHW tensors; got rank {len(data.shape)} for {data.name}"
-
-    pads = [0, 0, pad_top, 0, 0, 0, pad_bottom, 0]
-    pads_const = _make_constant(name_scope, np.array(pads, dtype=np.int64))
-    const_dtype = data.dtype or np.float32
-    const_val = _make_constant(name_scope, np.array(0, dtype=const_dtype))
-
-    out_shape = list(data.shape)
-    out_shape[2] = _require_static_dim(out_shape[2], f"{data.name} height") + pad_top + pad_bottom
-
-    out = gs.Variable(name_scope.make(f"{data.name}_pad"), dtype=data.dtype, shape=out_shape)
-    node = gs.Node(
-        op="Pad",
-        inputs=[data, pads_const, const_val],
-        outputs=[out],
-        attrs={"mode": "constant"},
-    )
-    return out, node

@@ -7,7 +7,7 @@ import onnx_graphsurgeon as gs
 from .catalog import SUPPORTED_GROUP_OPS, TileBlock
 from .conv import _conv_attrs_with_height_pad, _conv_params
 from .naming import NameScope
-from .tensor import _clone_shape_with_height, _make_pad, _make_slice, _tensor_height
+from .tensor import _clone_shape_with_height, _make_slice, _tensor_height
 from .tiling import _conv_input_slice_for_output, _conv_output_height
 
 
@@ -38,20 +38,10 @@ def _build_conv_tiles(
         block_nodes = []
         slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
 
-        padded = tile
-        if slice_info.pad_top or slice_info.pad_bottom:
-            padded, pad_node = _make_pad(
-                name_scope,
-                tile,
-                pad_top=slice_info.pad_top,
-                pad_bottom=slice_info.pad_bottom,
-            )
-            block_nodes.append(pad_node)
-
-        new_pads = [0, pads[1], 0, pads[3]]
+        new_pads = [slice_info.pad_top, pads[1], slice_info.pad_bottom, pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
         conv_inputs = list(node.inputs)
-        conv_inputs[main_input_index] = padded
+        conv_inputs[main_input_index] = tile
 
         expected = _conv_output_height(
             in_end - in_start,
