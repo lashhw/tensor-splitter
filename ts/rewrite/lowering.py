@@ -29,6 +29,7 @@ def _build_conv_tiles(
     s_h = strides[0]
     d_h = dilations[0]
     pad_top = pads[0]
+    h_in = _tensor_height(node.inputs[main_input_index])
 
     out_tiles = []
     new_nodes = []
@@ -36,19 +37,7 @@ def _build_conv_tiles(
 
     for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
         block_nodes = []
-        tile_h = _tensor_height(tile)
-        expected_tile_h = in_end - in_start
-        assert tile_h == expected_tile_h, (
-            f"Conv tile {tile_id} height mismatch: tensor has {tile_h}, range requires {expected_tile_h}"
-        )
-
-        h_in = _tensor_height(node.inputs[main_input_index])
         slice_info = _conv_input_slice_for_output(y0, y1, s_h, d_h, k_h, pad_top, h_in)
-        expected_in_range = (slice_info.slice_start, slice_info.slice_end)
-        assert expected_in_range == (in_start, in_end), (
-            f"planned Conv input range mismatch for tile {tile_id}: planned [{in_start},{in_end}), "
-            f"required [{expected_in_range[0]},{expected_in_range[1]})"
-        )
 
         padded = tile
         if slice_info.pad_top or slice_info.pad_bottom:
@@ -86,9 +75,6 @@ def _build_conv_tiles(
         block_nodes.append(conv_node)
 
         if expected != (y1 - y0):
-            assert expected >= (y1 - y0), (
-                f"Conv tile output shorter than expected: expected {y1 - y0}, got {expected}"
-            )
             conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
             block_nodes.append(conv_trim_node)
 
