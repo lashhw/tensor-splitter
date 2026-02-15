@@ -15,46 +15,6 @@ def _ensure_supported_op(node: gs.Node) -> None:
     assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
 
 
-def _build_non_conv_tiles(
-    name_scope: NameScope,
-    node: gs.Node,
-    orig_index: int,
-    tiles: Sequence[gs.Variable],
-    main_input_index: int,
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    out_tiles = []
-    new_nodes: List[gs.Node] = []
-    blocks = []
-
-    for tile_id, tile in enumerate(tiles):
-        inputs = list(node.inputs)
-        inputs[main_input_index] = tile
-        for idx, inp in enumerate(inputs):
-            if idx == main_input_index:
-                continue
-            assert isinstance(inp, gs.Constant), (
-                f"node {node.name or node.op} has unsupported external variable input {inp.name}"
-            )
-        assert tile.shape is not None, f"node {node.name or node.op} tile {tile_id} must have static shape"
-        out_shape = tile.shape
-        out = gs.Variable(
-            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
-            dtype=tile.dtype,
-            shape=out_shape,
-        )
-        new_node = gs.Node(
-            op=node.op,
-            inputs=inputs,
-            outputs=[out],
-            attrs=dict(node.attrs) if node.attrs else {},
-        )
-        new_nodes.append(new_node)
-        out_tiles.append(out)
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
-
-    return out_tiles, new_nodes, blocks
-
-
 def _build_conv_tiles(
     name_scope: NameScope,
     node: gs.Node,
@@ -147,6 +107,46 @@ def _build_conv_tiles(
         new_nodes.extend(block_nodes)
         out_tiles.append(conv_out)
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
+
+    return out_tiles, new_nodes, blocks
+
+
+def _build_non_conv_tiles(
+    name_scope: NameScope,
+    node: gs.Node,
+    orig_index: int,
+    tiles: Sequence[gs.Variable],
+    main_input_index: int,
+) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
+    out_tiles = []
+    new_nodes: List[gs.Node] = []
+    blocks = []
+
+    for tile_id, tile in enumerate(tiles):
+        inputs = list(node.inputs)
+        inputs[main_input_index] = tile
+        for idx, inp in enumerate(inputs):
+            if idx == main_input_index:
+                continue
+            assert isinstance(inp, gs.Constant), (
+                f"node {node.name or node.op} has unsupported external variable input {inp.name}"
+            )
+        assert tile.shape is not None, f"node {node.name or node.op} tile {tile_id} must have static shape"
+        out_shape = tile.shape
+        out = gs.Variable(
+            name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
+            dtype=tile.dtype,
+            shape=out_shape,
+        )
+        new_node = gs.Node(
+            op=node.op,
+            inputs=inputs,
+            outputs=[out],
+            attrs=dict(node.attrs) if node.attrs else {},
+        )
+        new_nodes.append(new_node)
+        out_tiles.append(out)
+        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
 
     return out_tiles, new_nodes, blocks
 
