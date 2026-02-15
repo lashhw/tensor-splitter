@@ -3,9 +3,14 @@ from collections import namedtuple
 from .conv import _conv_input_slice_for_output, _parse_conv_spec
 from .tensor import _tensor_height
 
-StagePlan = namedtuple(
-    "StagePlan",
+_StagePlan = namedtuple(
+    "_StagePlan",
     ["stage_ranges", "conv_slices_by_stage"],
+)
+
+_WriterSlot = namedtuple(
+    "_WriterSlot",
+    ["key", "start_index", "limit"],
 )
 
 
@@ -57,42 +62,46 @@ def _plan_stage_ranges(group_info, tile_count):
         stage_ranges[stage_idx] = in_ranges
         conv_slices_by_stage[stage_idx] = conv_slices
 
-    return StagePlan(
+    return _StagePlan(
         stage_ranges=stage_ranges,
         conv_slices_by_stage=conv_slices_by_stage,
     )
 
 
-def _slot_offsets(slot_sizes):
-    offsets = []
-    running = 0
-    for size in slot_sizes:
-        offsets.append(running)
-        running += size
-    return offsets, running
-
-
 def _build_ordered_node_writer(schedule, first_orig_index):
-    schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
-    slot_sizes = [2 if orig_index == first_orig_index else 1 for orig_index, _ in schedule]
-    slot_offsets, total_rewritten = _slot_offsets(slot_sizes)
-    slot_limits = [offset + size for offset, size in zip(slot_offsets, slot_sizes)]
-    slot_cursor = list(slot_offsets)
+    slot_by_key = {}
+    slot_cursor = {}
+    slots = []
+    total_rewritten = 0
+
+    for key in schedule:
+        orig_index, _ = key
+        capacity = 2 if orig_index == first_orig_index else 1
+        slot = _WriterSlot(
+            key=key,
+            start_index=total_rewritten,
+            limit=total_rewritten + capacity,
+        )
+        slots.append(slot)
+        slot_by_key[key] = slot
+        slot_cursor[key] = slot.start_index
+        total_rewritten += capacity
+
     ordered_nodes = [None for _ in range(total_rewritten + 1)]
 
     def place_node(orig_index, tile_id, node):
         key = (orig_index, tile_id)
-        assert key in schedule_pos, f"missing execution_order entry for {key}"
-        slot_idx = schedule_pos[key]
-        write_idx = slot_cursor[slot_idx]
-        assert write_idx < slot_limits[slot_idx], f"execution_order slot {key} has too many rewritten nodes"
+        assert key in slot_by_key, f"missing execution_order entry for {key}"
+        slot = slot_by_key[key]
+        write_idx = slot_cursor[key]
+        assert write_idx < slot.limit, f"execution_order slot {key} has too many rewritten nodes"
         ordered_nodes[write_idx] = node
-        slot_cursor[slot_idx] += 1
+        slot_cursor[key] = write_idx + 1
 
     def finalize_nodes(concat_node):
-        for slot_idx, key in enumerate(schedule):
-            assert slot_cursor[slot_idx] == slot_limits[slot_idx], (
-                f"execution_order slot {key} has missing rewritten nodes"
+        for slot in slots:
+            assert slot_cursor[slot.key] == slot.limit, (
+                f"execution_order slot {slot.key} has missing rewritten nodes"
             )
 
         ordered_nodes[-1] = concat_node

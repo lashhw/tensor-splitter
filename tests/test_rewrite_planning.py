@@ -3,13 +3,14 @@ import sys
 
 import numpy as np
 import onnx_graphsurgeon as gs
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ts.rewrite.analysis import GroupInfo
-from ts.rewrite.planning import _plan_stage_ranges
+from ts.rewrite.analysis import _GroupInfo
+from ts.rewrite.planning import _build_ordered_node_writer, _plan_stage_ranges
 
 
 def _make_group_info():
@@ -46,7 +47,7 @@ def _make_group_info():
         },
     )
 
-    return GroupInfo(
+    return _GroupInfo(
         node_range=(0, 2),
         nodes=[conv0, relu, conv2],
         entry_tensor=inp,
@@ -68,3 +69,59 @@ def test_plan_stage_ranges_backpropagates_and_tracks_conv_metadata():
     assert stage_plan.conv_slices_by_stage[0] is not None
     assert stage_plan.conv_slices_by_stage[1] is None
     assert stage_plan.conv_slices_by_stage[2] is not None
+
+
+def test_writer_allocates_two_positions_for_first_stage_slots():
+    schedule = [(10, 0), (10, 1), (11, 0), (11, 1)]
+    place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=10)
+
+    place_node(10, 0, "entry_0")
+    place_node(10, 0, "op0_0")
+    place_node(10, 1, "entry_1")
+    place_node(10, 1, "op0_1")
+    place_node(11, 0, "op1_0")
+    place_node(11, 1, "op1_1")
+
+    ordered_nodes = finalize_nodes("concat")
+    assert ordered_nodes == ["entry_0", "op0_0", "entry_1", "op0_1", "op1_0", "op1_1", "concat"]
+
+
+def test_writer_rejects_unknown_schedule_key():
+    schedule = [(0, 0)]
+    place_node, _ = _build_ordered_node_writer(schedule, first_orig_index=0)
+
+    with pytest.raises(AssertionError, match=r"missing execution_order entry for \(1, 0\)"):
+        place_node(1, 0, "node")
+
+
+def test_writer_rejects_slot_overfill():
+    schedule = [(0, 0)]
+    place_node, _ = _build_ordered_node_writer(schedule, first_orig_index=0)
+
+    place_node(0, 0, "entry")
+    place_node(0, 0, "op")
+    with pytest.raises(AssertionError, match=r"execution_order slot \(0, 0\) has too many rewritten nodes"):
+        place_node(0, 0, "extra")
+
+
+def test_writer_rejects_finalize_with_missing_nodes():
+    schedule = [(0, 0), (1, 0)]
+    place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=0)
+
+    place_node(0, 0, "entry")
+    place_node(0, 0, "op")
+    with pytest.raises(AssertionError, match=r"execution_order slot \(1, 0\) has missing rewritten nodes"):
+        finalize_nodes("concat")
+
+
+def test_writer_appends_concat_last_and_has_no_gaps():
+    schedule = [(0, 0), (1, 0)]
+    place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=0)
+
+    place_node(0, 0, "entry")
+    place_node(0, 0, "op")
+    place_node(1, 0, "next")
+    ordered_nodes = finalize_nodes("concat")
+
+    assert ordered_nodes[-1] == "concat"
+    assert all(node is not None for node in ordered_nodes)

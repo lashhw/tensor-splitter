@@ -1,10 +1,12 @@
 from collections import namedtuple
 
-ConvSpec = namedtuple("ConvSpec", ["kernel_shape", "strides", "pads"])
+_ConvSpec = namedtuple(
+    "_ConvSpec",
+    ["kernel_shape", "strides", "pads"]
+)
 
-
-ConvInputSlice = namedtuple(
-    "ConvInputSlice",
+_ConvInputSlice = namedtuple(
+    "_ConvInputSlice",
     ["slice_start", "slice_end", "pad_top", "pad_bottom"],
 )
 
@@ -29,7 +31,7 @@ def _parse_conv_spec(node):
     pads = _ensure_list(attrs["pads"], length=4)
     assert dilations == [1, 1], f"Conv dilations {dilations} are not supported; expected [1, 1]"
 
-    return ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
+    return _ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
 
 
 def _conv_attrs_with_height_pad(node, slice_info):
@@ -50,7 +52,7 @@ def _conv_input_slice_for_output(y0, y1, spec, h_in):
     slice_end = min(x1, h_in)
     assert slice_start < slice_end
 
-    return ConvInputSlice(
+    return _ConvInputSlice(
         slice_start=slice_start,
         slice_end=slice_end,
         pad_top=max(0, -x0),

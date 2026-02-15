@@ -5,8 +5,8 @@ from .tensor import _is_constant
 SUPPORTED_NON_CONV_OPS = {"Relu", "BatchNormalization"}
 SUPPORTED_GROUP_OPS = SUPPORTED_NON_CONV_OPS | {"Conv"}
 
-GroupInfo = namedtuple(
-    "GroupInfo",
+_GroupInfo = namedtuple(
+    "_GroupInfo",
     ["node_range", "nodes", "entry_tensor", "exit_tensor", "main_input_indices"],
 )
 
@@ -85,7 +85,7 @@ def _analyze_group(orig_nodes, node_range):
                 "rewrite requires a linear chain where each node feeds only the next node"
             )
 
-    return GroupInfo(
+    return _GroupInfo(
         node_range=node_range,
         nodes=group_nodes,
         entry_tensor=entry_tensor,

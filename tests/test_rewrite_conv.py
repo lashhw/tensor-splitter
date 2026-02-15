@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ts.rewrite.conv import ConvSpec, _conv_input_slice_for_output, _parse_conv_spec
+from ts.rewrite.conv import _ConvSpec, _conv_input_slice_for_output, _parse_conv_spec
 
 
 def _make_conv_node(attrs):
@@ -30,7 +30,7 @@ def test_parse_conv_spec_success():
 
     spec = _parse_conv_spec(node)
 
-    assert isinstance(spec, ConvSpec)
+    assert isinstance(spec, _ConvSpec)
     assert spec.kernel_shape == [3, 3]
     assert spec.strides == [2, 1]
     assert spec.pads == [1, 2, 3, 4]
@@ -74,7 +74,7 @@ def test_parse_conv_spec_rejects_non_unit_dilation():
 
 
 def test_conv_input_slice_for_output_handles_edge_overlap():
-    spec = ConvSpec(kernel_shape=[3, 3], strides=[2, 1], pads=[1, 0, 1, 0])
+    spec = _ConvSpec(kernel_shape=[3, 3], strides=[2, 1], pads=[1, 0, 1, 0])
 
     top = _conv_input_slice_for_output(0, 2, spec, h_in=6)
     assert (top.slice_start, top.slice_end) == (0, 4)

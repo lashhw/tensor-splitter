@@ -1,7 +1,10 @@
 import json
 from collections import namedtuple
 
-GroupConfig = namedtuple("GroupConfig", ["node_range", "tile_count", "execution_order"])
+GroupConfig = namedtuple(
+    "_GroupConfig",
+    ["node_range", "tile_count", "execution_order"]
+)
 
 
 def _to_int(value, field):
