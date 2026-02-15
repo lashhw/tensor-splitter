@@ -90,7 +90,7 @@ def test_writer_rejects_unknown_schedule_key():
     schedule = [(0, 0)]
     place_node, _ = _build_ordered_node_writer(schedule, first_orig_index=0)
 
-    with pytest.raises(AssertionError, match=r"missing execution_order entry for \(1, 0\)"):
+    with pytest.raises(KeyError, match=r"\(1, 0\)"):
         place_node(1, 0, "node")
 
 

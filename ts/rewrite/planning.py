@@ -82,16 +82,16 @@ def _build_ordered_node_writer(schedule, first_orig_index):
             start_index=total_rewritten,
             limit=total_rewritten + capacity,
         )
-        slots.append(slot)
+
         slot_by_key[key] = slot
         slot_cursor[key] = slot.start_index
+        slots.append(slot)
         total_rewritten += capacity
 
     ordered_nodes = [None for _ in range(total_rewritten + 1)]
 
     def place_node(orig_index, tile_id, node):
         key = (orig_index, tile_id)
-        assert key in slot_by_key, f"missing execution_order entry for {key}"
         slot = slot_by_key[key]
         write_idx = slot_cursor[key]
         assert write_idx < slot.limit, f"execution_order slot {key} has too many rewritten nodes"
@@ -103,7 +103,6 @@ def _build_ordered_node_writer(schedule, first_orig_index):
             assert slot_cursor[slot.key] == slot.limit, (
                 f"execution_order slot {slot.key} has missing rewritten nodes"
             )
-
         ordered_nodes[-1] = concat_node
         assert all(node is not None for node in ordered_nodes), "internal error: unfilled ordered node slot"
         return ordered_nodes
