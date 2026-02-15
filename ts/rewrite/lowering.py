@@ -69,13 +69,6 @@ def _build_non_conv_tiles(
     new_nodes: List[gs.Node] = []
     blocks = []
 
-    for idx, inp in enumerate(node.inputs):
-        if idx == main_input_index:
-            continue
-        assert isinstance(inp, gs.Constant), (
-            f"node {node.name or node.op} has unsupported external variable input {inp.name}"
-        )
-
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
         inputs[main_input_index] = tile
