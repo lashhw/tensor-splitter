@@ -7,7 +7,7 @@ import onnx_graphsurgeon as gs
 from .catalog import TileBlock
 from .conv import _conv_attrs_with_height_pad
 from .naming import NameScope
-from .tensor import _clone_shape_with_height
+from .tensor import _shape_with_dim_size
 from .tiling import ConvInputSlice
 
 def _build_conv_tiles(
@@ -30,7 +30,7 @@ def _build_conv_tiles(
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
 
-        out_shape = _clone_shape_with_height(node.outputs[0].shape, 2, y1 - y0)
+        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
         conv_out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
             dtype=node.outputs[0].dtype,

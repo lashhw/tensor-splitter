@@ -12,26 +12,17 @@ def _is_constant(tensor: gs.Tensor) -> bool:
     return isinstance(tensor, gs.Constant)
 
 
-def _require_static_dim(dim: Any, name: str) -> int:
-    assert dim is not None and not isinstance(dim, str), f"{name} must be static; got {dim}"
-    return int(dim)
+def _tensor_height(tensor: gs.Tensor) -> int:
+    return tensor.shape[2]
 
 
-def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
-    assert hasattr(tensor, "shape") and tensor.shape is not None, (
-        f"tensor {tensor.name} has no static shape information"
-    )
-    assert len(tensor.shape) > axis, f"tensor {tensor.name} rank is too small for axis {axis}"
-    return _require_static_dim(tensor.shape[axis], f"tensor {tensor.name} height")
-
-
-def _clone_shape_with_height(
+def _shape_with_dim_size(
     shape: Optional[List[Any]],
-    axis: int,
-    height: int,
+    dim: int,
+    size: int,
 ) -> Optional[List[Any]]:
     new_shape = list(shape)
-    new_shape[axis] = height
+    new_shape[dim] = size
     return new_shape
 
 
@@ -54,7 +45,7 @@ def _make_slice(
     axes = _make_constant(name_scope, np.array([axis], dtype=np.int64))
     steps = _make_constant(name_scope, np.array([1], dtype=np.int64))
 
-    out_shape = _clone_shape_with_height(data.shape, axis, end - start)
+    out_shape = _shape_with_dim_size(data.shape, axis, end - start)
     out = gs.Variable(
         name_scope.make(f"{data.name}_slice"),
         dtype=data.dtype,
