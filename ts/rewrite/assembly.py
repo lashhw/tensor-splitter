@@ -3,6 +3,7 @@ from .conv import _conv_params
 from .lowering import _build_tiled_op
 from .tensor import _make_concat, _make_slice, _tensor_height
 from .tiling import _conv_input_slice_for_output, _partition_ranges
+from .ordering import _ensure_toposorted
 
 
 def _plan_stage_ranges(group_info, tile_count):
@@ -100,7 +101,7 @@ def _build_entry_tiles(name_scope, entry, entry_ranges, first_orig_index, place_
     return tiles
 
 
-def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
+def _build_group(name_scope, group_info, group_cfg, node_index_map):
     for node in group_info.nodes:
         _ensure_supported_op(node)
 
@@ -123,4 +124,6 @@ def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
 
     concat_out, concat_node = _make_concat(name_scope, tiles, 2, group_info.exit_tensor.shape)
     ordered_nodes = finalize_nodes(concat_node)
+    _ensure_toposorted(ordered_nodes)
+
     return ordered_nodes, concat_out
