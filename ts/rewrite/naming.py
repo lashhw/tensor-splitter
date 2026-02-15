@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Set
+from typing import Set
 
 
 @dataclass
@@ -10,7 +10,7 @@ class NameScope:
     counter: int = 0
 
     @classmethod
-    def from_existing(cls, existing: Iterable[str]) -> "NameScope":
+    def from_existing(cls, existing: Set[str]) -> "NameScope":
         return cls(set(existing))
 
     def make(self, base: str) -> str:

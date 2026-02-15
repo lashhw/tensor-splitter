@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -61,7 +61,7 @@ def _plan_stage_ranges(
 def _build_entry_tiles(
     name_scope: NameScope,
     entry: gs.Variable,
-    entry_ranges: Sequence[Tuple[int, int]],
+    entry_ranges: List[Tuple[int, int]],
 ) -> Tuple[List[gs.Variable], List[gs.Node]]:
     tiles = []
     nodes = []
@@ -98,8 +98,8 @@ def _build_group_tiles(
 
 def _build_group_output(
     name_scope: NameScope,
-    tiles: Sequence[gs.Variable],
-    shape_hint: Sequence[Any] | None,
+    tiles: List[gs.Variable],
+    shape_hint: List[Any] | None,
     nodes: List[gs.Node],
 ) -> gs.Variable:
     out, concat_node = _make_concat(name_scope, tiles, 2, shape_hint)

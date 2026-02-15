@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -19,9 +19,9 @@ def _build_conv_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles: Sequence[gs.Variable],
-    in_ranges: Sequence[Tuple[int, int]],
-    out_ranges: Sequence[Tuple[int, int]],
+    tiles: List[gs.Variable],
+    in_ranges: List[Tuple[int, int]],
+    out_ranges: List[Tuple[int, int]],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     kernel_shape, strides, dilations, pads = _conv_params(node)
@@ -115,7 +115,7 @@ def _build_non_conv_tiles(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles: Sequence[gs.Variable],
+    tiles: List[gs.Variable],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     out_tiles = []
@@ -155,9 +155,9 @@ def _build_tiled_op(
     name_scope: NameScope,
     node: gs.Node,
     orig_index: int,
-    tiles: Sequence[gs.Variable],
-    in_ranges: Sequence[Tuple[int, int]],
-    out_ranges: Sequence[Tuple[int, int]],
+    tiles: List[gs.Variable],
+    in_ranges: List[Tuple[int, int]],
+    out_ranges: List[Tuple[int, int]],
     main_idx: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     if node.op == "Conv":

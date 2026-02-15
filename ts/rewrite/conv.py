@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import onnx_graphsurgeon as gs
@@ -34,7 +34,7 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[i
     return kernel_shape, strides, dilations, pads
 
 
-def _conv_attrs_with_height_pad(node: gs.Node, pads: Sequence[int]) -> Dict[str, Any]:
+def _conv_attrs_with_height_pad(node: gs.Node, pads: List[int]) -> Dict[str, Any]:
     attrs = dict(node.attrs) if node.attrs else {}
     attrs["pads"] = pads
     if "auto_pad" in attrs:

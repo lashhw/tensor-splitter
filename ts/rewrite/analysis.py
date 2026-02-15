@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import List, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -9,7 +9,7 @@ import onnx_graphsurgeon as gs
 @dataclass(frozen=True)
 class GroupInfo:
     node_range: Tuple[int, int]
-    nodes: Sequence[gs.Node]
+    nodes: List[gs.Node]
     entry_tensor: gs.Variable
     exit_tensor: gs.Variable
     main_input_indices: List[int]
@@ -23,7 +23,7 @@ def _node_label(node: gs.Node) -> str:
     return node.name or node.op
 
 
-def _analyze_group(nodes: Sequence[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
+def _analyze_group(nodes: List[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range
     assert not (a < 0 or b >= len(nodes) or b < a), (
         f"invalid group node_range {node_range} for graph with {len(nodes)} nodes"

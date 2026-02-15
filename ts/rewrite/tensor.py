@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import onnx_graphsurgeon as gs
@@ -22,7 +22,7 @@ def _tensor_height(tensor: gs.Tensor, axis: int = 2) -> int:
 
 
 def _clone_shape_with_height(
-    shape: Optional[Sequence[Any]],
+    shape: Optional[List[Any]],
     axis: int,
     height: int,
 ) -> Optional[List[Any]]:
@@ -65,9 +65,9 @@ def _make_slice(
 
 def _make_concat(
     name_scope: NameScope,
-    inputs: Sequence[gs.Tensor],
+    inputs: List[gs.Tensor],
     axis: int,
-    shape_hint: Optional[Sequence[Any]] = None,
+    shape_hint: Optional[List[Any]] = None,
 ) -> Tuple[gs.Variable, gs.Node]:
     assert inputs, "concat inputs must be non-empty"
     out_shape = None
