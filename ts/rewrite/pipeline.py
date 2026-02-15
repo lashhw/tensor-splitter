@@ -1,6 +1,8 @@
 import onnx
 import onnx_graphsurgeon as gs
 
+from ts.config import normalize_group_config
+
 from .analysis import _analyze_group, _ensure_toposorted
 from .assembly import _apply_group, _build_group
 
@@ -14,7 +16,10 @@ def rewrite_model(model, groups):
     orig_nodes = list(graph.nodes)
     _ensure_toposorted(orig_nodes)
 
-    groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
+    groups_sorted = sorted(
+        (normalize_group_config(group_cfg) for group_cfg in groups),
+        key=lambda g: g.node_range[0],
+    )
     node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
 
     for group_cfg in groups_sorted:

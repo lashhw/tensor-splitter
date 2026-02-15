@@ -61,66 +61,99 @@ def test_plan_stage_ranges_backpropagates_and_tracks_conv_metadata():
 
     stage_plan = _plan_stage_ranges(group_info, tile_count=2)
 
-    assert stage_plan.stage_ranges[-1] == [(0, 2), (2, 4)]
-    assert stage_plan.stage_ranges[2] == [(0, 4), (3, 8)]
-    assert stage_plan.stage_ranges[1] == [(0, 4), (3, 8)]
-    assert stage_plan.stage_ranges[0] == [(0, 5), (2, 8)]
+    assert stage_plan.tile_ids == [(0, 0), (1, 0)]
+    assert stage_plan.stage_regions[-1] == [(0, 2, 0, 8), (2, 4, 0, 8)]
+    assert stage_plan.stage_regions[2] == [(0, 4, 0, 8), (3, 8, 0, 8)]
+    assert stage_plan.stage_regions[1] == [(0, 4, 0, 8), (3, 8, 0, 8)]
+    assert stage_plan.stage_regions[0] == [(0, 5, 0, 8), (2, 8, 0, 8)]
 
     assert stage_plan.conv_slices_by_stage[0] is not None
     assert stage_plan.conv_slices_by_stage[1] is None
     assert stage_plan.conv_slices_by_stage[2] is not None
 
 
+def test_plan_stage_ranges_backpropagates_width_for_2d_tiling():
+    group_info = _make_group_info()
+
+    stage_plan = _plan_stage_ranges(group_info, tile_count=(2, 2))
+
+    assert stage_plan.tile_ids == [(0, 0), (0, 1), (1, 0), (1, 1)]
+    assert stage_plan.stage_regions[-1] == [
+        (0, 2, 0, 4),
+        (0, 2, 4, 8),
+        (2, 4, 0, 4),
+        (2, 4, 4, 8),
+    ]
+    assert stage_plan.stage_regions[2] == [
+        (0, 4, 0, 5),
+        (0, 4, 3, 8),
+        (3, 8, 0, 5),
+        (3, 8, 3, 8),
+    ]
+    assert stage_plan.stage_regions[0] == [
+        (0, 5, 0, 6),
+        (0, 5, 2, 8),
+        (2, 8, 0, 6),
+        (2, 8, 2, 8),
+    ]
+
+    conv_slice = stage_plan.conv_slices_by_stage[2][1]
+    assert conv_slice.pad_top == 1
+    assert conv_slice.pad_left == 0
+    assert conv_slice.pad_bottom == 0
+    assert conv_slice.pad_right == 1
+
+
 def test_writer_allocates_two_positions_for_first_stage_slots():
-    schedule = [(10, 0), (10, 1), (11, 0), (11, 1)]
+    schedule = [(10, (0, 0)), (10, (1, 0)), (11, (0, 0)), (11, (1, 0))]
     place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=10)
 
-    place_node(10, 0, "entry_0")
-    place_node(10, 0, "op0_0")
-    place_node(10, 1, "entry_1")
-    place_node(10, 1, "op0_1")
-    place_node(11, 0, "op1_0")
-    place_node(11, 1, "op1_1")
+    place_node(10, (0, 0), "entry_0")
+    place_node(10, (0, 0), "op0_0")
+    place_node(10, (1, 0), "entry_1")
+    place_node(10, (1, 0), "op0_1")
+    place_node(11, (0, 0), "op1_0")
+    place_node(11, (1, 0), "op1_1")
 
     ordered_nodes = finalize_nodes("concat")
     assert ordered_nodes == ["entry_0", "op0_0", "entry_1", "op0_1", "op1_0", "op1_1", "concat"]
 
 
 def test_writer_rejects_unknown_schedule_key():
-    schedule = [(0, 0)]
+    schedule = [(0, (0, 0))]
     place_node, _ = _build_ordered_node_writer(schedule, first_orig_index=0)
 
-    with pytest.raises(KeyError, match=r"\(1, 0\)"):
-        place_node(1, 0, "node")
+    with pytest.raises(KeyError, match=r"\(1, \(0, 0\)\)"):
+        place_node(1, (0, 0), "node")
 
 
 def test_writer_rejects_slot_overfill():
-    schedule = [(0, 0)]
+    schedule = [(0, (0, 0))]
     place_node, _ = _build_ordered_node_writer(schedule, first_orig_index=0)
 
-    place_node(0, 0, "entry")
-    place_node(0, 0, "op")
-    with pytest.raises(AssertionError, match=r"execution_order slot \(0, 0\) has too many rewritten nodes"):
-        place_node(0, 0, "extra")
+    place_node(0, (0, 0), "entry")
+    place_node(0, (0, 0), "op")
+    with pytest.raises(AssertionError, match=r"execution_order slot \(0, \(0, 0\)\) has too many rewritten nodes"):
+        place_node(0, (0, 0), "extra")
 
 
 def test_writer_rejects_finalize_with_missing_nodes():
-    schedule = [(0, 0), (1, 0)]
+    schedule = [(0, (0, 0)), (1, (0, 0))]
     place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=0)
 
-    place_node(0, 0, "entry")
-    place_node(0, 0, "op")
-    with pytest.raises(AssertionError, match=r"execution_order slot \(1, 0\) has missing rewritten nodes"):
+    place_node(0, (0, 0), "entry")
+    place_node(0, (0, 0), "op")
+    with pytest.raises(AssertionError, match=r"execution_order slot \(1, \(0, 0\)\) has missing rewritten nodes"):
         finalize_nodes("concat")
 
 
 def test_writer_appends_concat_last_and_has_no_gaps():
-    schedule = [(0, 0), (1, 0)]
+    schedule = [(0, (0, 0)), (1, (0, 0))]
     place_node, finalize_nodes = _build_ordered_node_writer(schedule, first_orig_index=0)
 
-    place_node(0, 0, "entry")
-    place_node(0, 0, "op")
-    place_node(1, 0, "next")
+    place_node(0, (0, 0), "entry")
+    place_node(0, (0, 0), "op")
+    place_node(1, (0, 0), "next")
     ordered_nodes = finalize_nodes("concat")
 
     assert ordered_nodes[-1] == "concat"

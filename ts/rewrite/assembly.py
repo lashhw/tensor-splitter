@@ -11,21 +11,36 @@ def _build_group(group_info, group_cfg, node_index_map):
     first_orig_index = node_index_map[id(group_info.nodes[0])]
     place_node, finalize_nodes = _build_ordered_node_writer(group_cfg.execution_order, first_orig_index)
 
-    tiles, entry_nodes = _build_entry_tiles(group_info.entry_tensor, stage_plan.stage_ranges[0], axis=2)
-    for tile_id, entry_node in enumerate(entry_nodes):
-        place_node(first_orig_index, tile_id, entry_node)
+    tiles, entry_nodes = _build_entry_tiles(
+        group_info.entry_tensor,
+        stage_plan.stage_regions[0],
+        stage_plan.tile_ids,
+    )
+    for split_hw, entry_node in zip(stage_plan.tile_ids, entry_nodes):
+        place_node(first_orig_index, split_hw, entry_node)
 
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
         main_input_idx = group_info.main_input_indices[stage_idx]
-        out_ranges = stage_plan.stage_ranges[stage_idx + 1]
+        out_regions = stage_plan.stage_regions[stage_idx + 1]
         conv_slices = stage_plan.conv_slices_by_stage[stage_idx]
-        tiles, op_nodes = _build_stage_tiles(node, tiles, out_ranges, main_input_idx, conv_slices)
-        for tile_id, op_node in enumerate(op_nodes):
-            place_node(orig_index, tile_id, op_node)
+        tiles, op_nodes = _build_stage_tiles(
+            node,
+            tiles,
+            stage_plan.tile_ids,
+            out_regions,
+            main_input_idx,
+            conv_slices,
+        )
+        for split_hw, op_node in zip(stage_plan.tile_ids, op_nodes):
+            place_node(orig_index, split_hw, op_node)
 
-    concat_out, concat_node = _build_group_concat(tiles, axis=2, output_tensor=group_info.exit_tensor)
-    ordered_nodes = finalize_nodes(concat_node)
+    concat_out, concat_node, extra_concat_nodes = _build_group_concat(
+        tiles,
+        tile_count=group_cfg.tile_count,
+        output_tensor=group_info.exit_tensor,
+    )
+    ordered_nodes = finalize_nodes(concat_node, extra_nodes=extra_concat_nodes)
     _ensure_toposorted(ordered_nodes)
 
     return ordered_nodes, concat_out

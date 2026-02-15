@@ -98,6 +98,29 @@ def test_small_conv_rewrite_matches():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
+def test_small_conv_rewrite_matches_with_2d_tile_count():
+    model = _make_conv_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 0),
+            tile_count=(2, 2),
+            execution_order=[(0, (0, 0)), (0, (0, 1)), (0, (1, 0)), (0, (1, 1))],
+        )
+    ]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 8, 8)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
 def test_entry_slices_follow_first_stage_schedule_order():
     model = _make_conv_model()
     groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 1), (0, 0)])]

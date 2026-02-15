@@ -8,7 +8,7 @@ Given an ONNX model and a split config, this tool generates a new ONNX model whe
 
 For each configured node range, it:
 
-1. Splits the range input tensor into `tile_count` tiles.
+1. Splits the range input tensor into a tile grid defined by `tile_count`.
 2. Computes each tile's required Conv input range so results match the original full-tensor run.
 3. Rewrites operators in that range to consume and produce per-tile tensors.
 4. Stitches tile outputs back into the original tensor layout.
@@ -62,8 +62,8 @@ The config must be a JSON list of group entries.
 Each group contains:
 
 - `node_range`: `[start_node_index, end_node_index]`
-- `tile_count`: number of tiles
-- `execution_order`: list of `[node_index, split_id]` pairs
+- `tile_count`: either an integer `N` (legacy, treated as `[N, 1]`) or `[tiles_h, tiles_w]`
+- `execution_order`: list of `[node_index, [split_id_h, split_id_w]]` pairs
 
 ### Example
 
@@ -71,8 +71,21 @@ Each group contains:
 [
   {
     "node_range": [4, 6],
-    "tile_count": 2,
-    "execution_order": [[4, 0], [4, 1], [5, 0], [5, 1], [6, 0], [6, 1]]
+    "tile_count": [2, 2],
+    "execution_order": [
+      [4, [0, 0]],
+      [4, [0, 1]],
+      [4, [1, 0]],
+      [4, [1, 1]],
+      [5, [0, 0]],
+      [5, [0, 1]],
+      [5, [1, 0]],
+      [5, [1, 1]],
+      [6, [0, 0]],
+      [6, [0, 1]],
+      [6, [1, 0]],
+      [6, [1, 1]]
+    ]
   },
   {
     "node_range": [10, 11],
@@ -86,6 +99,7 @@ Notes:
 
 - `node_range` is inclusive.
 - `execution_order` must include each pair in the group exactly once.
+- Legacy `execution_order` entries of `[node_index, split_id]` are accepted only when `tile_count` is an integer.
 
 ## Testing
 
