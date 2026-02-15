@@ -8,7 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ts.rewrite.conv import _ConvSpec, _conv_input_slice_for_output, _parse_conv_spec
+from ts.rewrite.conv import (
+    _ConvSpec,
+    _conv_input_slice_for_output_2d,
+    _parse_conv_spec,
+)
 
 
 def _make_conv_node(attrs):
@@ -73,13 +77,29 @@ def test_parse_conv_spec_rejects_non_unit_dilation():
         assert False, "_parse_conv_spec should reject Conv dilation other than [1, 1]"
 
 
-def test_conv_input_slice_for_output_handles_edge_overlap():
+def test_conv_input_slice_for_output_2d_handles_edge_overlap():
+    spec = _ConvSpec(kernel_shape=[3, 3], strides=[2, 1], pads=[1, 1, 1, 1])
+
+    top_left = _conv_input_slice_for_output_2d(0, 2, 0, 4, spec, h_in=6, w_in=8)
+    assert (top_left.height.slice_start, top_left.height.slice_end) == (0, 4)
+    assert (top_left.height.pad_top, top_left.height.pad_bottom) == (1, 0)
+    assert (top_left.width.slice_start, top_left.width.slice_end) == (0, 5)
+    assert (top_left.width.pad_top, top_left.width.pad_bottom) == (1, 0)
+
+    bottom_right = _conv_input_slice_for_output_2d(2, 4, 4, 8, spec, h_in=6, w_in=8)
+    assert (bottom_right.height.slice_start, bottom_right.height.slice_end) == (3, 6)
+    assert (bottom_right.height.pad_top, bottom_right.height.pad_bottom) == (0, 2)
+    assert (bottom_right.width.slice_start, bottom_right.width.slice_end) == (3, 8)
+    assert (bottom_right.width.pad_top, bottom_right.width.pad_bottom) == (0, 1)
+
+
+def test_conv_input_slice_for_output_2d_height_matches_legacy_height_logic():
     spec = _ConvSpec(kernel_shape=[3, 3], strides=[2, 1], pads=[1, 0, 1, 0])
 
-    top = _conv_input_slice_for_output(0, 2, spec, h_in=6)
+    top = _conv_input_slice_for_output_2d(0, 2, 0, 8, spec, h_in=6, w_in=8).height
     assert (top.slice_start, top.slice_end) == (0, 4)
     assert (top.pad_top, top.pad_bottom) == (1, 0)
 
-    bottom = _conv_input_slice_for_output(2, 4, spec, h_in=6)
+    bottom = _conv_input_slice_for_output_2d(2, 4, 0, 8, spec, h_in=6, w_in=8).height
     assert (bottom.slice_start, bottom.slice_end) == (3, 6)
     assert (bottom.pad_top, bottom.pad_bottom) == (0, 2)

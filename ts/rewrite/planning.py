@@ -1,11 +1,11 @@
 from collections import namedtuple
 
-from .conv import _conv_input_slice_for_output, _parse_conv_spec
-from .tensor import _tensor_height
+from .conv import _conv_input_slice_for_output_2d, _parse_conv_spec
+from .tensor import _tensor_height, _tensor_width
 
 _StagePlan = namedtuple(
     "_StagePlan",
-    ["stage_ranges", "conv_slices_by_stage"],
+    ["stage_ranges", "conv_slices_by_stage", "split_keys"],
 )
 
 _WriterSlot = namedtuple(
@@ -27,6 +27,18 @@ def _partition_ranges(total, tile_count):
     return ranges
 
 
+def _split_keys(tile_count):
+    split_count_h, split_count_w = tile_count
+    return [(split_id_h, split_id_w) for split_id_h in range(split_count_h) for split_id_w in range(split_count_w)]
+
+
+def _partition_ranges_2d(height, width, tile_count):
+    split_count_h, split_count_w = tile_count
+    height_ranges = _partition_ranges(height, split_count_h)
+    width_ranges = _partition_ranges(width, split_count_w)
+    return [(h_range, w_range) for h_range in height_ranges for w_range in width_ranges]
+
+
 def _plan_stage_ranges(group_info, tile_count):
     """
     Build per-stage required ranges with backward propagation from group output.
@@ -36,7 +48,12 @@ def _plan_stage_ranges(group_info, tile_count):
     """
     stage_count = len(group_info.nodes) + 1
     stage_ranges = [[] for _ in range(stage_count)]
-    stage_ranges[-1] = _partition_ranges(_tensor_height(group_info.exit_tensor), tile_count)
+    split_keys = _split_keys(tile_count)
+    stage_ranges[-1] = _partition_ranges_2d(
+        height=_tensor_height(group_info.exit_tensor),
+        width=_tensor_width(group_info.exit_tensor),
+        tile_count=tile_count,
+    )
 
     conv_slices_by_stage = [None for _ in range(stage_count - 1)]
 
@@ -51,12 +68,18 @@ def _plan_stage_ranges(group_info, tile_count):
 
         spec = _parse_conv_spec(node)
         h_in = _tensor_height(node.inputs[main_idx])
+        w_in = _tensor_width(node.inputs[main_idx])
 
         in_ranges = []
         conv_slices = []
-        for y0, y1 in out_ranges:
-            slice_info = _conv_input_slice_for_output(y0, y1, spec, h_in)
-            in_ranges.append((slice_info.slice_start, slice_info.slice_end))
+        for (y0, y1), (x0, x1) in out_ranges:
+            slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
+            in_ranges.append(
+                (
+                    (slice_info.height.slice_start, slice_info.height.slice_end),
+                    (slice_info.width.slice_start, slice_info.width.slice_end),
+                )
+            )
             conv_slices.append(slice_info)
 
         stage_ranges[stage_idx] = in_ranges
@@ -65,6 +88,7 @@ def _plan_stage_ranges(group_info, tile_count):
     return _StagePlan(
         stage_ranges=stage_ranges,
         conv_slices_by_stage=conv_slices_by_stage,
+        split_keys=split_keys,
     )
 
 
@@ -88,23 +112,24 @@ def _build_ordered_node_writer(schedule, first_orig_index):
         slots.append(slot)
         total_rewritten += capacity
 
-    ordered_nodes = [None for _ in range(total_rewritten + 1)]
+    ordered_nodes = [None for _ in range(total_rewritten)]
 
-    def place_node(orig_index, tile_id, node):
-        key = (orig_index, tile_id)
+    def place_node(orig_index, split_id, node):
+        key = (orig_index, split_id)
         slot = slot_by_key[key]
         write_idx = slot_cursor[key]
         assert write_idx < slot.limit, f"execution_order slot {key} has too many rewritten nodes"
         ordered_nodes[write_idx] = node
         slot_cursor[key] = write_idx + 1
 
-    def finalize_nodes(concat_node):
+    def finalize_nodes(concat_nodes):
         for slot in slots:
             assert slot_cursor[slot.key] == slot.limit, (
                 f"execution_order slot {slot.key} has missing rewritten nodes"
             )
-        ordered_nodes[-1] = concat_node
         assert all(node is not None for node in ordered_nodes), "internal error: unfilled ordered node slot"
-        return ordered_nodes
+        if isinstance(concat_nodes, (list, tuple)):
+            return ordered_nodes + list(concat_nodes)
+        return ordered_nodes + [concat_nodes]
 
     return place_node, finalize_nodes

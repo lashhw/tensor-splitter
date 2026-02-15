@@ -83,7 +83,30 @@ def _make_auto_pad_notset_conv_model():
 
 def test_small_conv_rewrite_matches():
     model = _make_conv_model()
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 8, 8)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
+def test_small_conv_rewrite_matches_2d_tiles():
+    model = _make_conv_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 0),
+            tile_count=(2, 2),
+            execution_order=[(0, (0, 0)), (0, (0, 1)), (0, (1, 0)), (0, (1, 1))],
+        )
+    ]
     rewritten = rewrite_model(model, groups)
 
     import onnxruntime as ort
@@ -100,7 +123,7 @@ def test_small_conv_rewrite_matches():
 
 def test_entry_slices_follow_first_stage_schedule_order():
     model = _make_conv_model()
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 1), (0, 0)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (1, 0)), (0, (0, 0))])]
     rewritten = rewrite_model(model, groups)
     graph = gs.import_onnx(rewritten)
 
@@ -109,13 +132,32 @@ def test_entry_slices_follow_first_stage_schedule_order():
     assert graph.nodes[3].inputs[0] is graph.nodes[2].outputs[0]
 
 
+def test_entry_slices_follow_first_stage_schedule_order_2d():
+    model = _make_conv_model()
+    groups = [
+        GroupConfig(
+            node_range=(0, 0),
+            tile_count=(2, 2),
+            execution_order=[(0, (1, 1)), (0, (0, 0)), (0, (1, 0)), (0, (0, 1))],
+        )
+    ]
+    rewritten = rewrite_model(model, groups)
+    graph = gs.import_onnx(rewritten)
+
+    assert [node.op for node in graph.nodes[:8]] == ["Slice", "Conv"] * 4
+    assert graph.nodes[1].inputs[0] is graph.nodes[0].outputs[0]
+    assert graph.nodes[3].inputs[0] is graph.nodes[2].outputs[0]
+    assert graph.nodes[5].inputs[0] is graph.nodes[4].outputs[0]
+    assert graph.nodes[7].inputs[0] is graph.nodes[6].outputs[0]
+
+
 def test_padding_only_tile_conv_rewrite_rejects():
     model = _make_padding_heavy_conv_model()
     groups = [
         GroupConfig(
             node_range=(0, 0),
-            tile_count=4,
-            execution_order=[(0, 0), (0, 1), (0, 2), (0, 3)],
+            tile_count=(4, 1),
+            execution_order=[(0, (0, 0)), (0, (1, 0)), (0, (2, 0)), (0, (3, 0))],
         )
     ]
     try:
@@ -128,7 +170,7 @@ def test_padding_only_tile_conv_rewrite_rejects():
 
 def test_rewrite_rejects_conv_with_auto_pad_attr():
     model = _make_auto_pad_notset_conv_model()
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
 
     try:
         rewrite_model(model, groups)
@@ -141,7 +183,7 @@ def test_rewrite_rejects_conv_with_auto_pad_attr():
 def test_rewrite_upgrades_legacy_opset_model():
     model = _make_conv_model()
     legacy = onnx.version_converter.convert_version(model, 7)
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
     rewritten = rewrite_model(legacy, groups)
 
     legacy_opset = _default_opset(legacy)
@@ -164,7 +206,7 @@ def test_rewrite_upgrades_legacy_opset_model():
 def test_rewrite_forces_target_opset_from_legacy_model():
     model = _make_conv_model()
     legacy = onnx.version_converter.convert_version(model, 7)
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
 
     rewritten = rewrite_model(legacy, groups)
 
@@ -175,7 +217,7 @@ def test_rewrite_forces_target_opset_from_legacy_model():
 def test_rewrite_forces_target_opset_from_newer_model():
     model = _make_conv_model()
     newer = onnx.version_converter.convert_version(model, 13)
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
 
     rewritten = rewrite_model(newer, groups)
 

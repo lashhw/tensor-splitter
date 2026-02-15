@@ -1,6 +1,8 @@
 import onnx
 import onnx_graphsurgeon as gs
 
+from ts.config import normalize_groups
+
 from .analysis import _analyze_group, _ensure_toposorted
 from .assembly import _apply_group, _build_group
 
@@ -8,6 +10,7 @@ _TARGET_OPSET = 11
 
 
 def rewrite_model(model, groups):
+    groups = normalize_groups(groups)
     model = onnx.version_converter.convert_version(model, _TARGET_OPSET)
     model = onnx.shape_inference.infer_shapes(model)
     graph = gs.import_onnx(model)

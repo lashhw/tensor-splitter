@@ -19,8 +19,38 @@ def _to_tuple_pair(value, field):
     return _to_int(value[0], f"{field}[0]"), _to_int(value[1], f"{field}[1]")
 
 
+def _normalize_tile_count(tile_count):
+    assert isinstance(tile_count, (list, tuple)) and len(tile_count) == 2, (
+        "tile_count must be a tuple/list [split_count_h, split_count_w]; "
+        f"got {tile_count!r}"
+    )
+    split_count_h = _to_int(tile_count[0], "tile_count[0]")
+    split_count_w = _to_int(tile_count[1], "tile_count[1]")
+    assert split_count_h > 0 and split_count_w > 0, (
+        "tile_count tuple values must be > 0; "
+        f"got ({split_count_h}, {split_count_w})"
+    )
+    return split_count_h, split_count_w
+
+
 def _normalize_execution_order(execution_order):
-    return [_to_tuple_pair(entry, "execution_order entry") for entry in execution_order]
+    normalized = []
+    for entry in execution_order:
+        assert isinstance(entry, (list, tuple)) and len(entry) == 2, (
+            "execution_order entry must be [node_index, [split_id_h, split_id_w]]; "
+            f"got {entry!r}"
+        )
+        node_index = _to_int(entry[0], "execution_order entry[0]")
+
+        split_id = entry[1]
+        assert isinstance(split_id, (list, tuple)) and len(split_id) == 2, (
+            "execution_order split id must be [split_id_h, split_id_w]; "
+            f"got {split_id!r}"
+        )
+        split_id_h = _to_int(split_id[0], "execution_order entry[1][0]")
+        split_id_w = _to_int(split_id[1], "execution_order entry[1][1]")
+        normalized.append((node_index, (split_id_h, split_id_w)))
+    return normalized
 
 
 def _validate_group(group):
@@ -28,9 +58,17 @@ def _validate_group(group):
     assert not (a < 0 or b < 0 or b < a), (
         f"node_range must be non-negative and a <= b; got {group.node_range}"
     )
-    assert group.tile_count > 0, f"tile_count must be > 0; got {group.tile_count}"
-
-    expected = [(i, s) for i in range(a, b + 1) for s in range(group.tile_count)]
+    split_count_h, split_count_w = group.tile_count
+    assert split_count_h > 0 and split_count_w > 0, (
+        "tile_count tuple values must be > 0; "
+        f"got ({split_count_h}, {split_count_w})"
+    )
+    expected = [
+        (i, (s_h, s_w))
+        for i in range(a, b + 1)
+        for s_h in range(split_count_h)
+        for s_w in range(split_count_w)
+    ]
     assert len(group.execution_order) == len(expected), (
         "execution_order length mismatch: expected "
         f"{len(expected)} entries, got {len(group.execution_order)}"
@@ -59,7 +97,7 @@ def parse_config(path):
 
     assert isinstance(raw, list), "config must be a list of group entries"
 
-    groups = []
+    raw_groups = []
     for idx, entry in enumerate(raw):
         assert isinstance(entry, dict), f"group {idx} must be a dict-like entry"
         assert (
@@ -68,13 +106,32 @@ def parse_config(path):
             and "execution_order" in entry
         ), f"group {idx} missing required keys: node_range, tile_count, execution_order"
 
-        group = GroupConfig(
-            node_range=_to_tuple_pair(entry["node_range"], "node_range"),
-            tile_count=_to_int(entry["tile_count"], "tile_count"),
-            execution_order=_normalize_execution_order(entry["execution_order"]),
+        raw_groups.append(
+            GroupConfig(
+                node_range=entry["node_range"],
+                tile_count=entry["tile_count"],
+                execution_order=entry["execution_order"],
+            )
         )
-        _validate_group(group)
-        groups.append(group)
 
-    _validate_ranges(groups)
-    return groups
+    return normalize_groups(raw_groups)
+
+
+def normalize_groups(groups):
+    normalized_groups = []
+    for idx, group in enumerate(groups):
+        assert hasattr(group, "node_range"), f"group {idx} missing node_range"
+        assert hasattr(group, "tile_count"), f"group {idx} missing tile_count"
+        assert hasattr(group, "execution_order"), f"group {idx} missing execution_order"
+
+        tile_count = _normalize_tile_count(group.tile_count)
+        normalized_group = GroupConfig(
+            node_range=_to_tuple_pair(group.node_range, "node_range"),
+            tile_count=tile_count,
+            execution_order=_normalize_execution_order(group.execution_order),
+        )
+        _validate_group(normalized_group)
+        normalized_groups.append(normalized_group)
+
+    _validate_ranges(normalized_groups)
+    return normalized_groups

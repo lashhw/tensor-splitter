@@ -12,8 +12,9 @@ def _build_group(group_info, group_cfg, node_index_map):
     place_node, finalize_nodes = _build_ordered_node_writer(group_cfg.execution_order, first_orig_index)
 
     tiles, entry_nodes = _build_entry_tiles(group_info.entry_tensor, stage_plan.stage_ranges[0], axis=2)
-    for tile_id, entry_node in enumerate(entry_nodes):
-        place_node(first_orig_index, tile_id, entry_node)
+    assert len(entry_nodes) == len(stage_plan.split_keys), "internal error: split key and entry node count mismatch"
+    for split_id, entry_node in zip(stage_plan.split_keys, entry_nodes):
+        place_node(first_orig_index, split_id, entry_node)
 
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
@@ -21,11 +22,18 @@ def _build_group(group_info, group_cfg, node_index_map):
         out_ranges = stage_plan.stage_ranges[stage_idx + 1]
         conv_slices = stage_plan.conv_slices_by_stage[stage_idx]
         tiles, op_nodes = _build_stage_tiles(node, tiles, out_ranges, main_input_idx, conv_slices)
-        for tile_id, op_node in enumerate(op_nodes):
-            place_node(orig_index, tile_id, op_node)
+        assert len(op_nodes) == len(stage_plan.split_keys), "internal error: split key and op node count mismatch"
+        for split_id, op_node in zip(stage_plan.split_keys, op_nodes):
+            place_node(orig_index, split_id, op_node)
 
-    concat_out, concat_node = _build_group_concat(tiles, axis=2, output_tensor=group_info.exit_tensor)
-    ordered_nodes = finalize_nodes(concat_node)
+    concat_out, concat_nodes = _build_group_concat(
+        tiles,
+        axis=2,
+        output_tensor=group_info.exit_tensor,
+        split_keys=stage_plan.split_keys,
+        tile_count=group_cfg.tile_count,
+    )
+    ordered_nodes = finalize_nodes(concat_nodes)
     _ensure_toposorted(ordered_nodes)
 
     return ordered_nodes, concat_out

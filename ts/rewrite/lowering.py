@@ -1,7 +1,7 @@
 import numpy as np
 import onnx_graphsurgeon as gs
 
-from .conv import _conv_attrs_with_height_pad
+from .conv import _conv_attrs_with_hw_pad
 from .tensor import _shape_with_dim_size
 
 
@@ -20,17 +20,23 @@ def _make_constant(name, values):
 def _build_entry_tiles(entry_tensor, entry_ranges, axis=2):
     tiles = []
     slice_nodes = []
+    for tile_id, ((start_h, end_h), (start_w, end_w)) in enumerate(entry_ranges):
+        starts_arr = np.array([start_h, start_w], dtype=np.int64)
+        ends_arr = np.array([end_h, end_w], dtype=np.int64)
+        axes_arr = np.array([axis, axis + 1], dtype=np.int64)
+        steps_arr = np.array([1, 1], dtype=np.int64)
+        out_shape = _shape_with_dim_size(entry_tensor.shape, axis, end_h - start_h)
+        out_shape = _shape_with_dim_size(out_shape, axis + 1, end_w - start_w)
 
-    for tile_id, (start, end) in enumerate(entry_ranges):
         base_name = f"{entry_tensor.name}_slice{tile_id}"
-        starts = _make_constant(f"{base_name}_starts", np.array([start], dtype=np.int64))
-        ends = _make_constant(f"{base_name}_ends", np.array([end], dtype=np.int64))
-        axes = _make_constant(f"{base_name}_axes", np.array([axis], dtype=np.int64))
-        steps = _make_constant(f"{base_name}_steps", np.array([1], dtype=np.int64))
+        starts = _make_constant(f"{base_name}_starts", starts_arr)
+        ends = _make_constant(f"{base_name}_ends", ends_arr)
+        axes = _make_constant(f"{base_name}_axes", axes_arr)
+        steps = _make_constant(f"{base_name}_steps", steps_arr)
         out = gs.Variable(
             f"{entry_tensor.name}_split{tile_id}",
             dtype=entry_tensor.dtype,
-            shape=_shape_with_dim_size(entry_tensor.shape, axis, end - start),
+            shape=out_shape,
         )
         slice_node = gs.Node(
             name=base_name,
@@ -55,13 +61,14 @@ def _build_conv_tiles(
     out_tiles = []
     new_nodes = []
     node_base_name = _node_base_name(node)
+    for tile_id, (tile, ((y0, y1), (x0, x1)), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
+        attrs = _conv_attrs_with_hw_pad(node, slice_info)
+        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
+        out_shape = _shape_with_dim_size(out_shape, 3, x1 - x0)
 
-    for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        attrs = _conv_attrs_with_height_pad(node, slice_info)
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
 
-        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
         conv_out = gs.Variable(
             f"{node.outputs[0].name}_split{tile_id}",
             dtype=node.outputs[0].dtype,
@@ -125,7 +132,48 @@ def _build_stage_tiles(
     return _build_non_conv_tiles(node, tiles, main_input_index)
 
 
-def _build_group_concat(tiles, axis, output_tensor):
+def _build_group_concat(tiles, axis, output_tensor, split_keys, tile_count):
+    split_count_h, split_count_w = tile_count
+    assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
+
+    tile_by_key = {key: tile for key, tile in zip(split_keys, tiles)}
+    if split_count_w == 1:
+        ordered_tiles = [tile_by_key[(split_id_h, 0)] for split_id_h in range(split_count_h)]
+        out = gs.Variable(
+            output_tensor.name,
+            dtype=output_tensor.dtype,
+            shape=list(output_tensor.shape),
+        )
+        node = gs.Node(
+            name=f"{output_tensor.name}_concat",
+            op="Concat",
+            inputs=ordered_tiles,
+            outputs=[out],
+            attrs={"axis": axis},
+        )
+        return out, node
+
+    concat_nodes = []
+    row_outputs = []
+    for split_id_h in range(split_count_h):
+        row_tiles = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
+        row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_tiles[0].shape[2])
+        row_out = gs.Variable(
+            f"{output_tensor.name}_row{split_id_h}",
+            dtype=output_tensor.dtype,
+            shape=row_out_shape,
+        )
+        concat_nodes.append(
+            gs.Node(
+                name=f"{output_tensor.name}_concat_row{split_id_h}",
+                op="Concat",
+                inputs=row_tiles,
+                outputs=[row_out],
+                attrs={"axis": 3},
+            )
+        )
+        row_outputs.append(row_out)
+
     out = gs.Variable(
         output_tensor.name,
         dtype=output_tensor.dtype,
@@ -134,8 +182,9 @@ def _build_group_concat(tiles, axis, output_tensor):
     node = gs.Node(
         name=f"{output_tensor.name}_concat",
         op="Concat",
-        inputs=tiles,
+        inputs=row_outputs,
         outputs=[out],
         attrs={"axis": axis},
     )
-    return out, node
+    concat_nodes.append(node)
+    return out, concat_nodes

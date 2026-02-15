@@ -55,8 +55,39 @@ def test_chain_rewrite_matches():
     groups = [
         GroupConfig(
             node_range=(0, 2),
-            tile_count=2,
-            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
+            tile_count=(2, 1),
+            execution_order=[
+                (0, (0, 0)),
+                (0, (1, 0)),
+                (1, (0, 0)),
+                (1, (1, 0)),
+                (2, (0, 0)),
+                (2, (1, 0)),
+            ],
+        )
+    ]
+    rewritten = rewrite_model(model, groups)
+
+    import onnxruntime as ort
+
+    sess_orig = ort.InferenceSession(model.SerializeToString(), providers=["CPUExecutionProvider"])
+    sess_new = ort.InferenceSession(rewritten.SerializeToString(), providers=["CPUExecutionProvider"])
+    rng = np.random.default_rng(0)
+    inp = rng.standard_normal((1, 3, 10, 6)).astype(np.float32)
+    out_orig = sess_orig.run(None, {"input": inp})[0]
+    out_new = sess_new.run(None, {"input": inp})[0]
+
+    np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
+
+
+def test_chain_rewrite_matches_2d_tile_count():
+    model = _make_chain_model()
+    split_ids = [(split_id_h, split_id_w) for split_id_h in range(2) for split_id_w in range(2)]
+    groups = [
+        GroupConfig(
+            node_range=(0, 2),
+            tile_count=(2, 2),
+            execution_order=[(node_idx, split_id) for node_idx in range(3) for split_id in split_ids],
         )
     ]
     rewritten = rewrite_model(model, groups)
@@ -78,8 +109,15 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
     groups = [
         GroupConfig(
             node_range=(0, 2),
-            tile_count=2,
-            execution_order=[(1, 0), (0, 0), (2, 0), (1, 1), (0, 1), (2, 1)],
+            tile_count=(2, 1),
+            execution_order=[
+                (1, (0, 0)),
+                (0, (0, 0)),
+                (2, (0, 0)),
+                (1, (1, 0)),
+                (0, (1, 0)),
+                (2, (1, 0)),
+            ],
         )
     ]
 
@@ -205,8 +243,15 @@ def test_chain_rewrite_rejects_unsupported_add_op():
     groups = [
         GroupConfig(
             node_range=(0, 2),
-            tile_count=2,
-            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)],
+            tile_count=(2, 1),
+            execution_order=[
+                (0, (0, 0)),
+                (0, (1, 0)),
+                (1, (0, 0)),
+                (1, (1, 0)),
+                (2, (0, 0)),
+                (2, (1, 0)),
+            ],
         )
     ]
     try:
@@ -222,8 +267,8 @@ def test_multi_conv_rewrite_matches_and_uses_only_final_concat():
     groups = [
         GroupConfig(
             node_range=(0, 1),
-            tile_count=2,
-            execution_order=[(0, 0), (0, 1), (1, 0), (1, 1)],
+            tile_count=(2, 1),
+            execution_order=[(0, (0, 0)), (0, (1, 0)), (1, (0, 0)), (1, (1, 0))],
         )
     ]
     rewritten = rewrite_model(model, groups)
@@ -249,9 +294,9 @@ def test_chain_rewrite_rejects_empty_intermediate_ranges():
     groups = [
         GroupConfig(
             node_range=(0, 2),
-            tile_count=5,
+            tile_count=(5, 1),
             execution_order=[
-                (node_idx, tile_id)
+                (node_idx, (tile_id, 0))
                 for node_idx in range(3)
                 for tile_id in range(5)
             ],
@@ -288,7 +333,7 @@ def _make_height_dilated_conv_model():
 
 def test_chain_rewrite_rejects_non_unit_conv_dilation():
     model = _make_height_dilated_conv_model()
-    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+    groups = [GroupConfig(node_range=(0, 0), tile_count=(2, 1), execution_order=[(0, (0, 0)), (0, (1, 0))])]
 
     try:
         rewrite_model(model, groups)

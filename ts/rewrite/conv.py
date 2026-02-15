@@ -10,6 +10,11 @@ _ConvInputSlice = namedtuple(
     ["slice_start", "slice_end", "pad_top", "pad_bottom"],
 )
 
+_ConvInputSlice2D = namedtuple(
+    "_ConvInputSlice2D",
+    ["height", "width"],
+)
+
 
 def _get_attr(node, name):
     return node.attrs[name]
@@ -34,27 +39,49 @@ def _parse_conv_spec(node):
     return _ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
 
 
-def _conv_attrs_with_height_pad(node, slice_info):
+def _conv_attrs_with_hw_pad(node, slice_info_2d):
     attrs = dict(node.attrs)
-    attrs["pads"] = [slice_info.pad_top, attrs["pads"][1], slice_info.pad_bottom, attrs["pads"][3]]
+    attrs["pads"] = [
+        slice_info_2d.height.pad_top,
+        slice_info_2d.width.pad_top,
+        slice_info_2d.height.pad_bottom,
+        slice_info_2d.width.pad_bottom,
+    ]
     return attrs
 
 
-def _conv_input_slice_for_output(y0, y1, spec, h_in):
-    k_h = spec.kernel_shape[0]
-    s_h = spec.strides[0]
-    pad_top = spec.pads[0]
-
-    x0 = y0 * s_h - pad_top
-    x1 = (y1 - 1) * s_h - pad_top + k_h
+def _conv_input_slice_for_output_axis(out0, out1, kernel, stride, pad_before, input_size):
+    x0 = out0 * stride - pad_before
+    x1 = (out1 - 1) * stride - pad_before + kernel
 
     slice_start = max(0, x0)
-    slice_end = min(x1, h_in)
+    slice_end = min(x1, input_size)
     assert slice_start < slice_end
 
     return _ConvInputSlice(
         slice_start=slice_start,
         slice_end=slice_end,
         pad_top=max(0, -x0),
-        pad_bottom=max(0, x1 - h_in),
+        pad_bottom=max(0, x1 - input_size),
+    )
+
+
+def _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in):
+    return _ConvInputSlice2D(
+        height=_conv_input_slice_for_output_axis(
+            out0=y0,
+            out1=y1,
+            kernel=spec.kernel_shape[0],
+            stride=spec.strides[0],
+            pad_before=spec.pads[0],
+            input_size=h_in,
+        ),
+        width=_conv_input_slice_for_output_axis(
+            out0=x0,
+            out1=x1,
+            kernel=spec.kernel_shape[1],
+            stride=spec.strides[1],
+            pad_before=spec.pads[1],
+            input_size=w_in,
+        ),
     )

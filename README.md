@@ -62,8 +62,8 @@ The config must be a JSON list of group entries.
 Each group contains:
 
 - `node_range`: `[start_node_index, end_node_index]`
-- `tile_count`: number of tiles
-- `execution_order`: list of `[node_index, split_id]` pairs
+- `tile_count`: `[split_count_h, split_count_w]`
+- `execution_order`: list of `[node_index, [split_id_h, split_id_w]]`
 
 ### Example
 
@@ -71,13 +71,29 @@ Each group contains:
 [
   {
     "node_range": [4, 6],
-    "tile_count": 2,
-    "execution_order": [[4, 0], [4, 1], [5, 0], [5, 1], [6, 0], [6, 1]]
+    "tile_count": [2, 1],
+    "execution_order": [
+      [4, [0, 0]],
+      [4, [1, 0]],
+      [5, [0, 0]],
+      [5, [1, 0]],
+      [6, [0, 0]],
+      [6, [1, 0]]
+    ]
   },
   {
     "node_range": [10, 11],
-    "tile_count": 3,
-    "execution_order": [[10, 0], [11, 0], [10, 1], [11, 1], [10, 2], [11, 2]]
+    "tile_count": [2, 2],
+    "execution_order": [
+      [10, [0, 0]],
+      [11, [0, 0]],
+      [10, [0, 1]],
+      [11, [0, 1]],
+      [10, [1, 0]],
+      [11, [1, 0]],
+      [10, [1, 1]],
+      [11, [1, 1]]
+    ]
   }
 ]
 ```
