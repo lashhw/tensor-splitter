@@ -6,9 +6,9 @@ import onnx_graphsurgeon as gs
 
 from ..config import GroupConfig
 from .analysis import GroupInfo
-from .catalog import TileBlock
+from .catalog import TileBlock, _ensure_supported_op
 from .conv import _conv_params
-from .lowering import _build_tiled_op, _ensure_supported_op
+from .lowering import _build_tiled_op
 from .naming import NameScope
 from .tensor import _make_concat, _make_slice, _tensor_height
 from .tiling import ConvInputSlice, _conv_input_slice_for_output, _partition_ranges

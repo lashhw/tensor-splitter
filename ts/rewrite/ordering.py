@@ -7,6 +7,17 @@ import onnx_graphsurgeon as gs
 from .catalog import TileBlock
 
 
+def _ensure_toposorted(nodes: List[gs.Node]) -> None:
+    index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
+    for node_idx, node in enumerate(nodes):
+        for tensor in node.inputs:
+            for producer in tensor.inputs:
+                producer_idx = index.get(id(producer))
+                if producer_idx is None:
+                    continue
+                assert producer_idx <= node_idx, "graph nodes are not topologically sorted"
+
+
 def _build_execution_order_map(
     blocks: List[TileBlock],
     schedule: List[Tuple[int, int]],
@@ -30,19 +41,5 @@ def _order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -
     scheduled.sort(key=lambda item: (item[0], item[1]))
     ordered = [node for _, _, node in scheduled]
 
-    try:
-        _ensure_toposorted(ordered)
-    except AssertionError:
-        assert False, "execution_order is not topologically valid for rewritten graph"
+    _ensure_toposorted(ordered)
     return ordered
-
-
-def _ensure_toposorted(nodes: List[gs.Node]) -> None:
-    index = {id(node): node_idx for node_idx, node in enumerate(nodes)}
-    for node_idx, node in enumerate(nodes):
-        for tensor in node.inputs:
-            for producer in tensor.inputs:
-                producer_idx = index.get(id(producer))
-                if producer_idx is None:
-                    continue
-                assert producer_idx <= node_idx, "graph nodes are not topologically sorted"

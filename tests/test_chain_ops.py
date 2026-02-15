@@ -86,7 +86,7 @@ def test_chain_rewrite_rejects_dependency_violating_execution_order():
     try:
         rewrite_model(model, groups)
     except AssertionError as exc:
-        assert "execution_order is not topologically valid" in str(exc)
+        assert "graph nodes are not topologically sorted" in str(exc)
     else:
         assert False, "rewrite_model should reject dependency-violating execution_order"
 

@@ -5,6 +5,9 @@ from typing import Dict
 
 import onnx_graphsurgeon as gs
 
+SUPPORTED_NON_CONV_OPS = {"Relu", "BatchNormalization"}
+SUPPORTED_GROUP_OPS = SUPPORTED_NON_CONV_OPS | {"Conv"}
+
 
 @dataclass
 class TileBlock:
@@ -18,5 +21,5 @@ class TileBlock:
         order_map[id(self.node)] = order
 
 
-SUPPORTED_NON_CONV_OPS = {"Relu", "BatchNormalization"}
-SUPPORTED_GROUP_OPS = SUPPORTED_NON_CONV_OPS | {"Conv"}
+def _ensure_supported_op(node: gs.Node) -> None:
+    assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"

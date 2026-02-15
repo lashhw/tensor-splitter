@@ -8,6 +8,10 @@ import onnx_graphsurgeon as gs
 from .naming import NameScope
 
 
+def _is_constant(tensor: gs.Tensor) -> bool:
+    return isinstance(tensor, gs.Constant)
+
+
 def _require_static_dim(dim: Any, name: str) -> int:
     assert dim is not None and not isinstance(dim, str), f"{name} must be static; got {dim}"
     return int(dim)
@@ -73,4 +77,3 @@ def _make_concat(
     out = gs.Variable(name_scope.make("tsplit_concat"), dtype=inputs[0].dtype, shape=out_shape)
     node = gs.Node(op="Concat", inputs=inputs, outputs=[out], attrs={"axis": axis})
     return out, node
-

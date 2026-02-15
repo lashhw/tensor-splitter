@@ -5,6 +5,8 @@ from typing import List, Tuple
 
 import onnx_graphsurgeon as gs
 
+from .tensor import _is_constant
+
 
 @dataclass(frozen=True)
 class GroupInfo:
@@ -13,11 +15,6 @@ class GroupInfo:
     entry_tensor: gs.Variable
     exit_tensor: gs.Variable
     main_input_indices: List[int]
-
-
-def _is_constant(tensor: gs.Tensor) -> bool:
-    return isinstance(tensor, gs.Constant)
-
 
 def _analyze_group(nodes: List[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range

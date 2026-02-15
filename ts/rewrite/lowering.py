@@ -4,16 +4,11 @@ from typing import List, Optional, Tuple
 
 import onnx_graphsurgeon as gs
 
-from .catalog import SUPPORTED_GROUP_OPS, TileBlock
+from .catalog import TileBlock
 from .conv import _conv_attrs_with_height_pad
 from .naming import NameScope
 from .tensor import _clone_shape_with_height
 from .tiling import ConvInputSlice
-
-
-def _ensure_supported_op(node: gs.Node) -> None:
-    assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
-
 
 def _build_conv_tiles(
     name_scope: NameScope,
