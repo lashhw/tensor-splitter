@@ -54,13 +54,3 @@ def _conv_input_slice_for_output(
         pad_top=max(0, -x0),
         pad_bottom=max(0, x1 - h_in),
     )
-
-
-def _conv_output_height(
-    h_in: int,
-    kernel: int,
-    stride: int,
-    pad_top: int,
-    pad_bottom: int,
-) -> int:
-    return ((h_in + pad_top + pad_bottom - kernel) // stride) + 1

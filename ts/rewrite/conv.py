@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import onnx_graphsurgeon as gs
 
 
@@ -12,14 +11,11 @@ def _get_attr(node: gs.Node, name: str, default: Any = None) -> Any:
     return node.attrs.get(name, default)
 
 
-def _as_int_list(value: Any, *, name: str, length: Optional[int] = None) -> List[int]:
+def _as_int_list(value: Any, *, name: str, length: int) -> List[int]:
     assert value is not None, f"Conv attribute {name} is required"
-    if isinstance(value, np.ndarray):
-        value = value.tolist()
-    assert isinstance(value, (tuple, list)), f"Conv attribute {name} must be a list/tuple; got {value!r}"
-    out = [int(v) for v in value]
-    assert length is None or len(out) == length, f"Conv attribute {name} must have length {length}; got {out}"
-    return out
+    assert isinstance(value, list), f"Conv attribute {name} must be a list; got {value!r}"
+    assert len(value) == length, f"Conv attribute {name} must have length {length}; got {value}"
+    return value
 
 
 def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int]]:

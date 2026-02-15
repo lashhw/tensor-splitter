@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -11,13 +11,17 @@ from .conv import _conv_params
 from .lowering import _build_tiled_op, _ensure_supported_op
 from .naming import NameScope
 from .tensor import _make_concat, _make_slice, _tensor_height
-from .tiling import _conv_input_slice_for_output, _partition_ranges
+from .tiling import ConvInputSlice, _conv_input_slice_for_output, _partition_ranges
 
 
 def _plan_stage_ranges(
     group_info: GroupInfo,
     tile_count: int,
-) -> List[List[Tuple[int, int]]]:
+) -> Tuple[
+    List[List[Tuple[int, int]]],
+    List[Optional[List[ConvInputSlice]]],
+    List[Optional[List[int]]],
+]:
     """
     Build per-stage required ranges with backward propagation from group output.
 
@@ -27,6 +31,9 @@ def _plan_stage_ranges(
     stage_count = len(group_info.nodes) + 1
     stage_ranges = [[] for _ in range(stage_count)]
     stage_ranges[-1] = _partition_ranges(_tensor_height(group_info.exit_tensor), tile_count)
+
+    conv_slices_by_stage = [None for _ in range(stage_count - 1)]
+    conv_base_pads_by_stage = [None for _ in range(stage_count - 1)]
 
     for stage_idx in range(stage_count - 2, -1, -1):
         node = group_info.nodes[stage_idx]
@@ -49,12 +56,16 @@ def _plan_stage_ranges(
         h_in = _tensor_height(node.inputs[main_idx])
 
         in_ranges: List[Tuple[int, int]] = []
+        conv_slices: List[ConvInputSlice] = []
         for y0, y1 in out_ranges:
             slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
             in_ranges.append((slice_info.slice_start, slice_info.slice_end))
+            conv_slices.append(slice_info)
         stage_ranges[stage_idx] = in_ranges
+        conv_slices_by_stage[stage_idx] = conv_slices
+        conv_base_pads_by_stage[stage_idx] = list(pads)
 
-    return stage_ranges
+    return stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage
 
 
 def _build_entry_tiles(
@@ -79,16 +90,26 @@ def _build_group_tiles(
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     for node in group_info.nodes:
         _ensure_supported_op(node)
-    stage_ranges = _plan_stage_ranges(group_info, group_cfg.tile_count)
+    stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage = _plan_stage_ranges(group_info, group_cfg.tile_count)
     tiles, nodes = _build_entry_tiles(name_scope, group_info.entry_tensor, stage_ranges[0])
 
     blocks = []
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
         main_idx = group_info.main_input_indices[stage_idx]
-        in_ranges = stage_ranges[stage_idx]
         out_ranges = stage_ranges[stage_idx + 1]
-        tiles, op_nodes, op_blocks = _build_tiled_op(name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx)
+        conv_slices = conv_slices_by_stage[stage_idx]
+        conv_base_pads = conv_base_pads_by_stage[stage_idx]
+        tiles, op_nodes, op_blocks = _build_tiled_op(
+            name_scope,
+            node,
+            orig_index,
+            tiles,
+            out_ranges,
+            main_idx,
+            conv_slices,
+            conv_base_pads,
+        )
         nodes.extend(op_nodes)
         blocks.extend(op_blocks)
 

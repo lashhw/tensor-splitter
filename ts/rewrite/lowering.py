@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import onnx_graphsurgeon as gs
 
 from .catalog import SUPPORTED_GROUP_OPS, TileBlock
-from .conv import _conv_attrs_with_height_pad, _conv_params
+from .conv import _conv_attrs_with_height_pad
 from .naming import NameScope
-from .tensor import _clone_shape_with_height, _make_slice, _tensor_height
-from .tiling import _conv_input_slice_for_output, _conv_output_height
+from .tensor import _clone_shape_with_height
+from .tiling import ConvInputSlice
 
 
 def _ensure_supported_op(node: gs.Node) -> None:
@@ -20,36 +20,30 @@ def _build_conv_tiles(
     node: gs.Node,
     orig_index: int,
     tiles: List[gs.Variable],
-    in_ranges: List[Tuple[int, int]],
     out_ranges: List[Tuple[int, int]],
+    conv_slices: List[ConvInputSlice],
+    conv_base_pads: List[int],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    kernel_shape, strides, pads = _conv_params(node)
-    k_h = kernel_shape[0]
-    s_h = strides[0]
-    pad_top = pads[0]
-    h_in = _tensor_height(node.inputs[main_input_index])
+    pads = conv_base_pads
+    assert len(conv_slices) == len(out_ranges), (
+        f"conv_slices length {len(conv_slices)} must match out_ranges length {len(out_ranges)}"
+    )
+    assert len(pads) == 4, f"conv_base_pads must have length 4; got {pads}"
 
     out_tiles = []
     new_nodes = []
     blocks = []
 
-    for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
+    for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
         block_nodes = []
-        slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
 
         new_pads = [slice_info.pad_top, pads[1], slice_info.pad_bottom, pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
 
-        expected = _conv_output_height(
-            in_end - in_start,
-            k_h,
-            s_h,
-            slice_info.pad_top,
-            slice_info.pad_bottom,
-        )
+        expected = y1 - y0
 
         out_shape = None
         if node.outputs[0].shape is not None:
@@ -61,10 +55,6 @@ def _build_conv_tiles(
         )
         conv_node = gs.Node(op="Conv", inputs=conv_inputs, outputs=[conv_out], attrs=attrs)
         block_nodes.append(conv_node)
-
-        if expected != (y1 - y0):
-            conv_out, conv_trim_node = _make_slice(name_scope, conv_out, 0, y1 - y0, 2)
-            block_nodes.append(conv_trim_node)
 
         out_tiles.append(conv_out)
         new_nodes.extend(block_nodes)
@@ -84,15 +74,16 @@ def _build_non_conv_tiles(
     new_nodes: List[gs.Node] = []
     blocks = []
 
+    for idx, inp in enumerate(node.inputs):
+        if idx == main_input_index:
+            continue
+        assert isinstance(inp, gs.Constant), (
+            f"node {node.name or node.op} has unsupported external variable input {inp.name}"
+        )
+
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
         inputs[main_input_index] = tile
-        for idx, inp in enumerate(inputs):
-            if idx == main_input_index:
-                continue
-            assert isinstance(inp, gs.Constant), (
-                f"node {node.name or node.op} has unsupported external variable input {inp.name}"
-            )
         assert tile.shape is not None, f"node {node.name or node.op} tile {tile_id} must have static shape"
         out_shape = tile.shape
         out = gs.Variable(
@@ -118,11 +109,12 @@ def _build_tiled_op(
     node: gs.Node,
     orig_index: int,
     tiles: List[gs.Variable],
-    in_ranges: List[Tuple[int, int]],
     out_ranges: List[Tuple[int, int]],
     main_idx: int,
+    conv_slices: Optional[List[ConvInputSlice]] = None,
+    conv_base_pads: Optional[List[int]] = None,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     if node.op == "Conv":
-        return _build_conv_tiles(name_scope, node, orig_index, tiles, in_ranges, out_ranges, main_idx)
+        return _build_conv_tiles(name_scope, node, orig_index, tiles, out_ranges, conv_slices, conv_base_pads, main_idx)
     else:
         return _build_non_conv_tiles(name_scope, node, orig_index, tiles, main_idx)
