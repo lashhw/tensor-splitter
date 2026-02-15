@@ -26,13 +26,13 @@ def _ensure_supported_op(node):
     assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
 
 
-def _analyze_group(nodes, node_range):
+def _analyze_group(orig_nodes, node_range):
     a, b = node_range
-    assert not (a < 0 or b >= len(nodes) or b < a), (
-        f"invalid group node_range {node_range} for graph with {len(nodes)} nodes"
+    assert not (a < 0 or b >= len(orig_nodes) or b < a), (
+        f"invalid group node_range {node_range} for graph with {len(orig_nodes)} nodes"
     )
 
-    group_nodes = nodes[a : b + 1]
+    group_nodes = orig_nodes[a : b + 1]
     main_input_indices = []
 
     first = group_nodes[0]
