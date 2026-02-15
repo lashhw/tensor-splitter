@@ -9,26 +9,14 @@ from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_
 _TARGET_OPSET = 11
 
 
-def _rewrite_group(
-    group_info,
-    group_cfg,
-    node_index_map,
-    name_scope,
-):
+def _rewrite_group(group_info, group_cfg, node_index_map, name_scope):
     nodes, blocks, concat_out, concat_node = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
     order_map = _build_execution_order_map(blocks, group_cfg.execution_order, concat_node)
     ordered_nodes = _order_by_execution_order(nodes, order_map)
     return ordered_nodes, concat_out
 
 
-def _apply_group(
-    graph,
-    orig_nodes,
-    group_info,
-    group_cfg,
-    new_nodes,
-    concat_out,
-):
+def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
     node_a = orig_nodes[group_cfg.node_range[0]]
     node_b = orig_nodes[group_cfg.node_range[1]]
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)

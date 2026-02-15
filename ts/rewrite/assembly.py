@@ -8,10 +8,7 @@ from .tensor import _make_concat, _make_slice, _tensor_height
 from .tiling import ConvInputSlice, _conv_input_slice_for_output, _partition_ranges
 
 
-def _plan_stage_ranges(
-    group_info,
-    tile_count,
-):
+def _plan_stage_ranges(group_info, tile_count):
     """
     Build per-stage required ranges with backward propagation from group output.
 
@@ -58,11 +55,7 @@ def _plan_stage_ranges(
     return stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage
 
 
-def _build_entry_tiles(
-    name_scope,
-    entry,
-    entry_ranges,
-):
+def _build_entry_tiles(name_scope, entry, entry_ranges):
     tiles = []
     nodes = []
     for start, end in entry_ranges:
@@ -72,12 +65,7 @@ def _build_entry_tiles(
     return tiles, nodes
 
 
-def _build_group_tiles(
-    name_scope,
-    group_info,
-    group_cfg,
-    node_index_map,
-):
+def _build_group_tiles(name_scope, group_info, group_cfg, node_index_map):
     for node in group_info.nodes:
         _ensure_supported_op(node)
 

@@ -19,14 +19,7 @@ def _partition_ranges(total, tile_count):
     return ranges
 
 
-def _conv_input_slice_for_output(
-    y0,
-    y1,
-    stride,
-    kernel,
-    pad_top,
-    h_in,
-):
+def _conv_input_slice_for_output(y0, y1, stride, kernel, pad_top, h_in):
     x0 = y0 * stride - pad_top
     x1 = (y1 - 1) * stride - pad_top + kernel
 

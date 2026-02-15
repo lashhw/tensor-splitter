@@ -9,11 +9,7 @@ def _ensure_toposorted(nodes):
                 assert producer_idx <= node_idx, "graph nodes are not topologically sorted"
 
 
-def _build_execution_order_map(
-    blocks,
-    schedule,
-    final_node,
-):
+def _build_execution_order_map(blocks, schedule, final_node):
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
     order_map = {}
     for block in blocks:
