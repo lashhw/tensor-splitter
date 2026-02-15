@@ -42,16 +42,15 @@ def _plan_stage_ranges(
             stage_ranges[stage_idx] = list(out_ranges)
             continue
 
-        kernel_shape, strides, dilations, pads = _conv_params(node)
+        kernel_shape, strides, pads = _conv_params(node)
         k_h = kernel_shape[0]
         s_h = strides[0]
-        d_h = dilations[0]
         pad_top = pads[0]
         h_in = _tensor_height(node.inputs[main_idx])
 
         in_ranges: List[Tuple[int, int]] = []
         for y0, y1 in out_ranges:
-            slice_info = _conv_input_slice_for_output(y0, y1, s_h, d_h, k_h, pad_top, h_in)
+            slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
             in_ranges.append((slice_info.slice_start, slice_info.slice_end))
         stage_ranges[stage_idx] = in_ranges
 

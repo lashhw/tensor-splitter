@@ -22,7 +22,7 @@ def _as_int_list(value: Any, *, name: str, length: Optional[int] = None) -> List
     return out
 
 
-def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[int]]:
+def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int]]:
     auto_pad = _get_attr(node, "auto_pad", "NOTSET")
     assert auto_pad in (None, "NOTSET", ""), f"Conv auto_pad {auto_pad} is not supported"
 
@@ -30,8 +30,9 @@ def _conv_params(node: gs.Node) -> Tuple[List[int], List[int], List[int], List[i
     strides = _as_int_list(_get_attr(node, "strides"), name="strides", length=2)
     dilations = _as_int_list(_get_attr(node, "dilations"), name="dilations", length=2)
     pads = _as_int_list(_get_attr(node, "pads"), name="pads", length=4)
+    assert dilations == [1, 1], f"Conv dilations {dilations} are not supported; expected [1, 1]"
 
-    return kernel_shape, strides, dilations, pads
+    return kernel_shape, strides, pads
 
 
 def _conv_attrs_with_height_pad(node: gs.Node, pads: List[int]) -> Dict[str, Any]:

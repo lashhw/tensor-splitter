@@ -31,15 +31,10 @@ def _partition_ranges(total: int, tile_count: int) -> List[Tuple[int, int]]:
     return ranges
 
 
-def _receptive_field(kernel: int, dilation: int) -> int:
-    return (kernel - 1) * dilation + 1
-
-
 def _conv_input_slice_for_output(
     y0: int,
     y1: int,
     stride: int,
-    dilation: int,
     kernel: int,
     pad_top: int,
     h_in: int,
@@ -47,9 +42,8 @@ def _conv_input_slice_for_output(
     assert y1 > y0, f"empty or invalid Conv output range [{y0},{y1}) is not supported"
     assert h_in >= 0, f"invalid input height {h_in}"
 
-    rf = _receptive_field(kernel, dilation)
     x0 = y0 * stride - pad_top
-    x1 = (y1 - 1) * stride - pad_top + rf
+    x1 = (y1 - 1) * stride - pad_top + kernel
 
     # Clamp both bounds into [0, h_in] to avoid inverted ranges when output
     # tiles map fully outside the original tensor and rely only on padding.
@@ -71,9 +65,7 @@ def _conv_output_height(
     h_in: int,
     kernel: int,
     stride: int,
-    dilation: int,
     pad_top: int,
     pad_bottom: int,
 ) -> int:
-    rf = _receptive_field(kernel, dilation)
-    return ((h_in + pad_top + pad_bottom - rf) // stride) + 1
+    return ((h_in + pad_top + pad_bottom - kernel) // stride) + 1

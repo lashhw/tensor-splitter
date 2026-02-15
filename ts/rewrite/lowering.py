@@ -24,10 +24,9 @@ def _build_conv_tiles(
     out_ranges: List[Tuple[int, int]],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    kernel_shape, strides, dilations, pads = _conv_params(node)
+    kernel_shape, strides, pads = _conv_params(node)
     k_h = kernel_shape[0]
     s_h = strides[0]
-    d_h = dilations[0]
     pad_top = pads[0]
     h_in = _tensor_height(node.inputs[main_input_index])
 
@@ -37,7 +36,7 @@ def _build_conv_tiles(
 
     for tile_id, (tile, (in_start, in_end), (y0, y1)) in enumerate(zip(tiles, in_ranges, out_ranges)):
         block_nodes = []
-        slice_info = _conv_input_slice_for_output(y0, y1, s_h, d_h, k_h, pad_top, h_in)
+        slice_info = _conv_input_slice_for_output(y0, y1, s_h, k_h, pad_top, h_in)
 
         padded = tile
         if slice_info.pad_top or slice_info.pad_bottom:
@@ -58,7 +57,6 @@ def _build_conv_tiles(
             in_end - in_start,
             k_h,
             s_h,
-            d_h,
             slice_info.pad_top,
             slice_info.pad_bottom,
         )

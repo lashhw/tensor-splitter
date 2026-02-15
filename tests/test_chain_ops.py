@@ -173,7 +173,7 @@ def _make_downsample_conv_chain_with_padding_model():
             "kernel_shape": [1, 4],
             "pads": [0, 0, 3, 3],
             "strides": [2, 2],
-            "dilations": [2, 1],
+            "dilations": [1, 1],
         },
     )
 
@@ -191,7 +191,7 @@ def _make_downsample_conv_chain_with_padding_model():
             "kernel_shape": [1, 4],
             "pads": [0, 0, 3, 3],
             "strides": [2, 2],
-            "dilations": [2, 1],
+            "dilations": [1, 1],
         },
     )
 
@@ -265,9 +265,43 @@ def test_chain_rewrite_rejects_empty_intermediate_ranges():
         assert False, "rewrite_model should reject groups that produce empty Conv intermediate ranges"
 
 
+def _make_height_dilated_conv_model():
+    inp = gs.Variable("input", dtype=np.float32, shape=[1, 3, 8, 8])
+    weight = gs.Constant("W_dilated", values=np.random.randn(4, 3, 3, 3).astype(np.float32))
+    bias = gs.Constant("B_dilated", values=np.random.randn(4).astype(np.float32))
+    conv_out = gs.Variable("conv_dilated_out", dtype=np.float32, shape=[1, 4, 6, 8])
+    conv = gs.Node(
+        op="Conv",
+        inputs=[inp, weight, bias],
+        outputs=[conv_out],
+        attrs={
+            "kernel_shape": [3, 3],
+            "pads": [1, 1, 1, 1],
+            "strides": [1, 1],
+            "dilations": [2, 1],
+        },
+    )
+    graph = gs.Graph(nodes=[conv], inputs=[inp], outputs=[conv_out])
+    model = gs.export_onnx(graph)
+    return onnx.shape_inference.infer_shapes(model)
+
+
+def test_chain_rewrite_rejects_non_unit_conv_dilation():
+    model = _make_height_dilated_conv_model()
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 0), (0, 1)])]
+
+    try:
+        rewrite_model(model, groups)
+    except AssertionError as exc:
+        assert "Conv dilations" in str(exc)
+    else:
+        assert False, "rewrite_model should reject Conv dilation other than [1, 1]"
+
+
 if __name__ == "__main__":
     test_chain_rewrite_matches()
     test_chain_rewrite_rejects_dependency_violating_execution_order()
     test_chain_rewrite_rejects_unsupported_add_op()
     test_multi_conv_rewrite_matches_and_uses_only_final_concat()
     test_chain_rewrite_rejects_empty_intermediate_ranges()
+    test_chain_rewrite_rejects_non_unit_conv_dilation()
