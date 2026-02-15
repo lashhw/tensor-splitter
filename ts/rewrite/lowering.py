@@ -25,18 +25,12 @@ def _build_conv_tiles(
     conv_base_pads: List[int],
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
-    pads = conv_base_pads
-    assert len(conv_slices) == len(out_ranges), (
-        f"conv_slices length {len(conv_slices)} must match out_ranges length {len(out_ranges)}"
-    )
-    assert len(pads) == 4, f"conv_base_pads must have length 4; got {pads}"
-
     out_tiles = []
     new_nodes = []
     blocks = []
 
     for tile_id, (tile, (y0, y1), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        new_pads = [slice_info.pad_top, pads[1], slice_info.pad_bottom, pads[3]]
+        new_pads = [slice_info.pad_top, conv_base_pads[1], slice_info.pad_bottom, conv_base_pads[3]]
         attrs = _conv_attrs_with_height_pad(node, new_pads)
         conv_inputs = list(node.inputs)
         conv_inputs[main_input_index] = tile
@@ -49,11 +43,15 @@ def _build_conv_tiles(
         )
         out_tiles.append(conv_out)
 
-        conv_node = gs.Node(op="Conv", inputs=conv_inputs, outputs=[conv_out], attrs=attrs)
-        block_nodes = [conv_node]
-        new_nodes.extend(block_nodes)
+        conv_node = gs.Node(
+            op="Conv",
+            inputs=conv_inputs,
+            outputs=[conv_out],
+            attrs=attrs
+        )
+        new_nodes.append(conv_node)
 
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=block_nodes))
+        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[conv_node]))
 
     return out_tiles, new_nodes, blocks
 
@@ -66,27 +64,28 @@ def _build_non_conv_tiles(
     main_input_index: int,
 ) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
     out_tiles = []
-    new_nodes: List[gs.Node] = []
+    new_nodes = []
     blocks = []
 
     for tile_id, tile in enumerate(tiles):
         inputs = list(node.inputs)
         inputs[main_input_index] = tile
-        assert tile.shape is not None, f"node {node.name or node.op} tile {tile_id} must have static shape"
-        out_shape = tile.shape
+
         out = gs.Variable(
             name_scope.make(f"{node.outputs[0].name}_tile{tile_id}"),
-            dtype=tile.dtype,
-            shape=out_shape,
+            dtype=node.outputs[0].dtype,
+            shape=tile.shape,
         )
+        out_tiles.append(out)
+
         new_node = gs.Node(
             op=node.op,
             inputs=inputs,
             outputs=[out],
-            attrs=dict(node.attrs) if node.attrs else {},
+            attrs=dict(node.attrs)
         )
         new_nodes.append(new_node)
-        out_tiles.append(out)
+
         blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
 
     return out_tiles, new_nodes, blocks

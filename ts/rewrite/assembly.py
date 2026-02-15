@@ -101,14 +101,7 @@ def _build_group_tiles(
         conv_slices = conv_slices_by_stage[stage_idx]
         conv_base_pads = conv_base_pads_by_stage[stage_idx]
         tiles, op_nodes, op_blocks = _build_tiled_op(
-            name_scope,
-            node,
-            orig_index,
-            tiles,
-            out_ranges,
-            main_idx,
-            conv_slices,
-            conv_base_pads,
+            name_scope, node, orig_index, tiles, out_ranges, main_idx, conv_slices, conv_base_pads
         )
         nodes.extend(op_nodes)
         blocks.extend(op_blocks)
