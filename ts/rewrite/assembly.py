@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import onnx_graphsurgeon as gs
 
@@ -87,13 +87,19 @@ def _build_group_tiles(
     group_info: GroupInfo,
     group_cfg: GroupConfig,
     node_index_map: Dict[int, int],
-) -> Tuple[List[gs.Variable], List[gs.Node], List[TileBlock]]:
+) -> Tuple[List[gs.Node], List[TileBlock], gs.Variable, gs.Node]:
     for node in group_info.nodes:
         _ensure_supported_op(node)
+
     stage_ranges, conv_slices_by_stage, conv_base_pads_by_stage = _plan_stage_ranges(group_info, group_cfg.tile_count)
     tiles, nodes = _build_entry_tiles(name_scope, group_info.entry_tensor, stage_ranges[0])
 
-    blocks = []
+    first_orig_index = node_index_map[id(group_info.nodes[0])]
+    blocks = [
+        TileBlock(orig_index=first_orig_index, tile_id=tile_id, node=slice_node)
+        for tile_id, slice_node in enumerate(nodes)
+    ]
+
     for stage_idx, node in enumerate(group_info.nodes):
         orig_index = node_index_map[id(node)]
         main_idx = group_info.main_input_indices[stage_idx]
@@ -106,15 +112,6 @@ def _build_group_tiles(
         nodes.extend(op_nodes)
         blocks.extend(op_blocks)
 
-    return tiles, nodes, blocks
-
-
-def _build_group_output(
-    name_scope: NameScope,
-    tiles: List[gs.Variable],
-    shape_hint: List[Any] | None,
-    nodes: List[gs.Node],
-) -> gs.Variable:
-    out, concat_node = _make_concat(name_scope, tiles, 2, shape_hint)
+    concat_out, concat_node = _make_concat(name_scope, tiles, 2, group_info.exit_tensor.shape)
     nodes.append(concat_node)
-    return out
+    return nodes, blocks, concat_out, concat_node

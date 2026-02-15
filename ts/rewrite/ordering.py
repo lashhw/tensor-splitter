@@ -10,13 +10,14 @@ from .catalog import TileBlock
 def _build_execution_order_map(
     blocks: List[TileBlock],
     schedule: List[Tuple[int, int]],
+    final_node: gs.Node,
 ) -> Dict[int, int]:
     schedule_pos = {pair: idx for idx, pair in enumerate(schedule)}
     order_map = {}
     for block in blocks:
         key = (block.orig_index, block.tile_id)
-        assert key in schedule_pos, f"execution_order is missing entry {key}"
         block.assign_order(order_map, schedule_pos[key])
+    order_map[id(final_node)] = len(schedule)
     return order_map
 
 
@@ -25,17 +26,9 @@ def _order_by_execution_order(nodes: List[gs.Node], order_map: Dict[int, int]) -
     scheduled = [
         (order_map[id(node)], orig_pos, node)
         for orig_pos, node in indexed
-        if id(node) in order_map
     ]
     scheduled.sort(key=lambda item: (item[0], item[1]))
-    scheduled_iter = iter(node for _, _, node in scheduled)
-
-    ordered = []
-    for _, node in indexed:
-        if id(node) in order_map:
-            ordered.append(next(scheduled_iter))
-        else:
-            ordered.append(node)
+    ordered = [node for _, _, node in scheduled]
 
     try:
         _ensure_toposorted(ordered)

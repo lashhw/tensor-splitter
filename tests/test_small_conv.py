@@ -98,6 +98,17 @@ def test_small_conv_rewrite_matches():
     np.testing.assert_allclose(out_orig, out_new, rtol=1e-5, atol=1e-6)
 
 
+def test_entry_slices_follow_first_stage_schedule_order():
+    model = _make_conv_model()
+    groups = [GroupConfig(node_range=(0, 0), tile_count=2, execution_order=[(0, 1), (0, 0)])]
+    rewritten = rewrite_model(model, groups)
+    graph = gs.import_onnx(rewritten)
+
+    assert [node.op for node in graph.nodes] == ["Slice", "Conv", "Slice", "Conv", "Concat"]
+    assert graph.nodes[1].inputs[0] is graph.nodes[0].outputs[0]
+    assert graph.nodes[3].inputs[0] is graph.nodes[2].outputs[0]
+
+
 def test_padding_only_tile_conv_rewrite_rejects():
     model = _make_padding_heavy_conv_model()
     groups = [

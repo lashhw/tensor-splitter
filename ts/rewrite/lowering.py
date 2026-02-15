@@ -51,7 +51,7 @@ def _build_conv_tiles(
         )
         new_nodes.append(conv_node)
 
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[conv_node]))
+        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, node=conv_node))
 
     return out_tiles, new_nodes, blocks
 
@@ -86,7 +86,7 @@ def _build_non_conv_tiles(
         )
         new_nodes.append(new_node)
 
-        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, nodes=[new_node]))
+        blocks.append(TileBlock(orig_index=orig_index, tile_id=tile_id, node=new_node))
 
     return out_tiles, new_nodes, blocks
 

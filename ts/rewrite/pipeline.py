@@ -7,7 +7,7 @@ import onnx_graphsurgeon as gs
 
 from ..config import GroupConfig
 from .analysis import GroupInfo, _analyze_group
-from .assembly import _build_group_output, _build_group_tiles
+from .assembly import _build_group_tiles
 from .naming import NameScope
 from .ordering import _build_execution_order_map, _ensure_toposorted, _order_by_execution_order
 
@@ -20,9 +20,8 @@ def _rewrite_group(
     node_index_map: Dict[int, int],
     name_scope: NameScope,
 ) -> Tuple[List[gs.Node], gs.Variable]:
-    tiles, nodes, blocks = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
-    concat_out = _build_group_output(name_scope, tiles, group_info.exit_tensor.shape, nodes)
-    order_map = _build_execution_order_map(blocks, group_cfg.execution_order)
+    nodes, blocks, concat_out, concat_node = _build_group_tiles(name_scope, group_info, group_cfg, node_index_map)
+    order_map = _build_execution_order_map(blocks, group_cfg.execution_order, concat_node)
     ordered_nodes = _order_by_execution_order(nodes, order_map)
     return ordered_nodes, concat_out
 
