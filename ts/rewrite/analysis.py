@@ -19,10 +19,6 @@ def _is_constant(tensor: gs.Tensor) -> bool:
     return isinstance(tensor, gs.Constant)
 
 
-def _node_label(node: gs.Node) -> str:
-    return node.name or node.op
-
-
 def _analyze_group(nodes: List[gs.Node], node_range: Tuple[int, int]) -> GroupInfo:
     a, b = node_range
     assert not (a < 0 or b >= len(nodes) or b < a), (
@@ -51,34 +47,34 @@ def _analyze_group(nodes: List[gs.Node], node_range: Tuple[int, int]) -> GroupIn
 
             producers = list(inp.inputs)
             assert len(producers) == 1, (
-                f"node {_node_label(node)} input {inp.name} must have exactly one producer; "
+                f"node {node.name} input {inp.name} must have exactly one producer; "
                 f"found {len(producers)}"
             )
             producer = producers[0]
 
             assert main_idx is None, (
-                f"node {_node_label(node)} must have exactly one data input from within group"
+                f"node {node.name} must have exactly one data input from within group"
             )
             main_idx = idx
 
             assert id(producer) == id(prev), (
-                f"node {_node_label(node)} data input must come from previous node in group"
+                f"node {node.name} data input must come from previous node in group"
             )
 
         assert main_idx is not None, (
-            f"node {_node_label(node)} must have exactly one data input from within group"
+            f"node {node.name} must have exactly one data input from within group"
         )
         main_input_indices.append(main_idx)
 
     for node in group_nodes:
-        assert len(node.outputs) == 1, f"node {_node_label(node)} must have a single output"
+        assert len(node.outputs) == 1, f"node {node.name} must have a single output"
     exit_tensor = group_nodes[-1].outputs[0]
 
     for node, nxt in zip(group_nodes[:-1], group_nodes[1:]):
         out_tensor = node.outputs[0]
         for consumer in out_tensor.outputs:
             assert consumer is nxt, (
-                f"node {_node_label(node)} output has extra consumer {_node_label(consumer)}; "
+                f"node {node.name} output has extra consumer {consumer.name}; "
                 "rewrite requires a linear chain where each node feeds only the next node"
             )
 
