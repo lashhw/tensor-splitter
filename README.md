@@ -1,6 +1,6 @@
 # ONNX Tensor Splitter
 
-This tool rewrites ONNX models to execute selected node ranges tile-by-tile. For convolution-heavy chains, it adds explicit boundary-overlap logic to keep results numerically equivalent to the original model.
+This tool rewrites ONNX models to execute selected node ranges tile-by-tile. For convolution chains, it adds explicit boundary-overlap logic to keep results numerically equivalent to the original model.
 
 ## What this tool does
 

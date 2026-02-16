@@ -3,6 +3,7 @@ import sys
 
 import numpy as np
 import onnx_graphsurgeon as gs
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -154,7 +155,7 @@ def test_build_group_concat_uses_requested_axis_and_output_tensor():
     ]
     output_tensor = gs.Variable("y", dtype=np.float32, shape=[1, 4, 4, 8])
 
-    out, concat_node = _build_group_concat(
+    out, concat_nodes = _build_group_concat(
         tiles,
         axis=2,
         output_tensor=output_tensor,
@@ -162,9 +163,11 @@ def test_build_group_concat_uses_requested_axis_and_output_tensor():
         tile_count=(2, 1),
     )
 
-    assert concat_node.op == "Concat"
-    assert concat_node.attrs["axis"] == 2
+    assert len(concat_nodes) == 1
+    assert concat_nodes[0].op == "Concat"
+    assert concat_nodes[0].attrs["axis"] == 2
     assert out.name == "y"
+    assert out.dtype == np.float32
     assert out.shape == [1, 4, 4, 8]
 
 
@@ -193,4 +196,19 @@ def test_build_group_concat_for_2d_tiles_uses_row_then_height_concat():
     assert concat_nodes[2].op == "Concat"
     assert concat_nodes[2].attrs["axis"] == 2
     assert out.name == "y"
+    assert out.dtype == np.float32
     assert out.shape == [1, 4, 4, 8]
+
+
+def test_build_group_concat_requires_split_keys_and_tiles_to_match():
+    tiles = [gs.Variable("y_split00", dtype=np.float32, shape=[1, 4, 2, 8])]
+    output_tensor = gs.Variable("y", dtype=np.float32, shape=[1, 4, 2, 8])
+
+    with pytest.raises(AssertionError, match="split_keys and tiles must have the same length"):
+        _build_group_concat(
+            tiles,
+            axis=2,
+            output_tensor=output_tensor,
+            split_keys=[],
+            tile_count=(1, 1),
+        )

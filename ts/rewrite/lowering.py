@@ -137,54 +137,39 @@ def _build_group_concat(tiles, axis, output_tensor, split_keys, tile_count):
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
     tile_by_key = {key: tile for key, tile in zip(split_keys, tiles)}
+    concat_nodes = []
+    output_shape = list(output_tensor.shape)
+
+    def _make_output(name, shape):
+        return gs.Variable(name, dtype=output_tensor.dtype, shape=shape)
+
     if split_count_w == 1:
-        ordered_tiles = [tile_by_key[(split_id_h, 0)] for split_id_h in range(split_count_h)]
-        out = gs.Variable(
-            output_tensor.name,
-            dtype=output_tensor.dtype,
-            shape=list(output_tensor.shape),
-        )
-        node = gs.Node(
+        final_concat_inputs = [tile_by_key[(split_id_h, 0)] for split_id_h in range(split_count_h)]
+    else:
+        final_concat_inputs = []
+        for split_id_h in range(split_count_h):
+            row_concat_inputs = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
+            row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_concat_inputs[0].shape[2])
+            row_out = _make_output(f"{output_tensor.name}_row{split_id_h}", row_out_shape)
+            concat_nodes.append(
+                gs.Node(
+                    name=f"{output_tensor.name}_concat_row{split_id_h}",
+                    op="Concat",
+                    inputs=row_concat_inputs,
+                    outputs=[row_out],
+                    attrs={"axis": 3},
+                )
+            )
+            final_concat_inputs.append(row_out)
+
+    out = _make_output(output_tensor.name, output_shape)
+    concat_nodes.append(
+        gs.Node(
             name=f"{output_tensor.name}_concat",
             op="Concat",
-            inputs=ordered_tiles,
+            inputs=final_concat_inputs,
             outputs=[out],
             attrs={"axis": axis},
         )
-        return out, node
-
-    concat_nodes = []
-    row_outputs = []
-    for split_id_h in range(split_count_h):
-        row_tiles = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
-        row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_tiles[0].shape[2])
-        row_out = gs.Variable(
-            f"{output_tensor.name}_row{split_id_h}",
-            dtype=output_tensor.dtype,
-            shape=row_out_shape,
-        )
-        concat_nodes.append(
-            gs.Node(
-                name=f"{output_tensor.name}_concat_row{split_id_h}",
-                op="Concat",
-                inputs=row_tiles,
-                outputs=[row_out],
-                attrs={"axis": 3},
-            )
-        )
-        row_outputs.append(row_out)
-
-    out = gs.Variable(
-        output_tensor.name,
-        dtype=output_tensor.dtype,
-        shape=list(output_tensor.shape),
     )
-    node = gs.Node(
-        name=f"{output_tensor.name}_concat",
-        op="Concat",
-        inputs=row_outputs,
-        outputs=[out],
-        attrs={"axis": axis},
-    )
-    concat_nodes.append(node)
     return out, concat_nodes
