@@ -6,9 +6,7 @@ DEFAULT_VERIFY_RTOL = 1e-4
 DEFAULT_VERIFY_ATOL = 1e-5
 
 
-def _extract_static_shape(
-    name: str, value_info: onnx.ValueInfoProto
-) -> tuple[int, ...]:
+def _extract_static_shape(name, value_info):
     """Return a fully static input shape, asserting verification preconditions."""
     tensor_type = value_info.type.tensor_type
     shape = [
@@ -24,26 +22,20 @@ def _extract_static_shape(
     return tuple(int(dim) for dim in shape)
 
 
-def _resolve_numpy_dtype(name: str, value_info: onnx.ValueInfoProto):
+def _resolve_numpy_dtype(name, value_info):
     tensor_type = value_info.type.tensor_type
     dtype = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE.get(tensor_type.elem_type)
     assert dtype is not None, f"input {name} has unsupported dtype {tensor_type.elem_type}"
     return dtype
 
 
-def _make_input_array(
-    name: str,
-    value_info: onnx.ValueInfoProto,
-    rng: np.random.Generator,
-) -> np.ndarray:
+def _make_input_array(name, value_info, rng):
     static_shape = _extract_static_shape(name, value_info)
     dtype = _resolve_numpy_dtype(name, value_info)
     return rng.standard_normal(size=static_shape).astype(dtype)
 
 
-def _build_inference_session(
-    model: onnx.ModelProto, sess_options: ort.SessionOptions
-) -> ort.InferenceSession:
+def _build_inference_session(model, sess_options):
     return ort.InferenceSession(
         model.SerializeToString(),
         sess_options,
@@ -51,9 +43,7 @@ def _build_inference_session(
     )
 
 
-def _collect_runtime_inputs(
-    model: onnx.ModelProto, rng: np.random.Generator
-) -> dict[str, np.ndarray]:
+def _collect_runtime_inputs(model, rng):
     initializer_names = {init.name for init in model.graph.initializer}
     return {
         inp.name: _make_input_array(inp.name, inp, rng)
@@ -62,13 +52,7 @@ def _collect_runtime_inputs(
     }
 
 
-def _compute_output_diffs(
-    original: onnx.ModelProto,
-    orig_outs: list[np.ndarray],
-    new_outs: list[np.ndarray],
-    rtol: float,
-    atol: float,
-) -> tuple[bool, dict[str, float]]:
+def _compute_output_diffs(original, orig_outs, new_outs, rtol, atol):
     """Compute per-output max abs diffs and aggregate allclose pass/fail."""
     assert len(orig_outs) == len(new_outs), (
         "output count mismatch between original and rewritten models"
@@ -92,11 +76,11 @@ def _compute_output_diffs(
 
 
 def verify_model(
-    original: onnx.ModelProto,
-    rewritten: onnx.ModelProto,
-    rtol: float = DEFAULT_VERIFY_RTOL,
-    atol: float = DEFAULT_VERIFY_ATOL,
-) -> tuple[bool, dict[str, float]]:
+    original,
+    rewritten,
+    rtol=DEFAULT_VERIFY_RTOL,
+    atol=DEFAULT_VERIFY_ATOL,
+):
     """Run both models in ONNX Runtime and compare outputs elementwise."""
     sess_options = ort.SessionOptions()
     sess_original = _build_inference_session(original, sess_options)
