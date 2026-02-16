@@ -101,6 +101,17 @@ def test_verify_model_uses_distinct_random_inputs_per_input_tensor():
     assert diffs["out"] > 0.0
 
 
+def test_verify_model_prints_input_shape_and_dtype(capsys):
+    model = _make_identity_model()
+
+    verify_model(model, model)
+    out = capsys.readouterr().out
+
+    assert "Verification input input:" in out
+    assert "shape=(1, 1, 2, 2)" in out
+    assert "dtype=float32" in out
+
+
 def test_verify_model_returns_inf_diff_on_shape_mismatch():
     original = _make_identity_model()
     rewritten = _make_reshaped_output_model()

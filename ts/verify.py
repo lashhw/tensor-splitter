@@ -88,6 +88,8 @@ def verify_model(
 
     rng = np.random.default_rng(0)
     inputs = _collect_runtime_inputs(original, rng)
+    for name, value in inputs.items():
+        print(f"Verification input {name}: shape={value.shape}, dtype={value.dtype}")
 
     orig_outs = sess_original.run(None, inputs)
     new_outs = sess_rewritten.run(None, inputs)

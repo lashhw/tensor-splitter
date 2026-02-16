@@ -31,9 +31,9 @@ def main():
 
     if args.verify:
         ok, diffs = verify_model(model, rewritten)
-        print("Verification: PASS" if ok else "Verification: FAIL")
         for name, diff in diffs.items():
             print(f"{name}: max_abs_diff={diff}")
+        print("PASS" if ok else "FAIL")
 
 
 if __name__ == "__main__":
