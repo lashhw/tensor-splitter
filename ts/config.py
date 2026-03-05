@@ -1,7 +1,7 @@
 import json
 from collections import namedtuple
 
-GroupConfig = namedtuple(
+_GroupConfig = namedtuple(
     "_GroupConfig",
     ["node_range", "tile_count", "execution_order"]
 )
@@ -107,17 +107,17 @@ def parse_config(path):
         ), f"group {idx} missing required keys: node_range, tile_count, execution_order"
 
         raw_groups.append(
-            GroupConfig(
+            _GroupConfig(
                 node_range=entry["node_range"],
                 tile_count=entry["tile_count"],
                 execution_order=entry["execution_order"],
             )
         )
 
-    return normalize_groups(raw_groups)
+    return _normalize_groups(raw_groups)
 
 
-def normalize_groups(groups):
+def _normalize_groups(groups):
     normalized_groups = []
     for idx, group in enumerate(groups):
         assert hasattr(group, "node_range"), f"group {idx} missing node_range"
@@ -125,7 +125,7 @@ def normalize_groups(groups):
         assert hasattr(group, "execution_order"), f"group {idx} missing execution_order"
 
         tile_count = _normalize_tile_count(group.tile_count)
-        normalized_group = GroupConfig(
+        normalized_group = _GroupConfig(
             node_range=_to_tuple_pair(group.node_range, "node_range"),
             tile_count=tile_count,
             execution_order=_normalize_execution_order(group.execution_order),
