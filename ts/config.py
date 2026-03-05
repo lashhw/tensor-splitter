@@ -91,6 +91,26 @@ def _validate_ranges(groups):
         assert a1 > b0, f"group ranges overlap or touch: {(a0, b0)} and {(a1, b1)}"
 
 
+def _normalize_groups(groups):
+    normalized_groups = []
+    for idx, group in enumerate(groups):
+        assert hasattr(group, "node_range"), f"group {idx} missing node_range"
+        assert hasattr(group, "tile_count"), f"group {idx} missing tile_count"
+        assert hasattr(group, "execution_order"), f"group {idx} missing execution_order"
+
+        tile_count = _normalize_tile_count(group.tile_count)
+        normalized_group = _GroupConfig(
+            node_range=_to_tuple_pair(group.node_range, "node_range"),
+            tile_count=tile_count,
+            execution_order=_normalize_execution_order(group.execution_order),
+        )
+        _validate_group(normalized_group)
+        normalized_groups.append(normalized_group)
+
+    _validate_ranges(normalized_groups)
+    return normalized_groups
+
+
 def parse_config(path):
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
@@ -115,23 +135,3 @@ def parse_config(path):
         )
 
     return _normalize_groups(raw_groups)
-
-
-def _normalize_groups(groups):
-    normalized_groups = []
-    for idx, group in enumerate(groups):
-        assert hasattr(group, "node_range"), f"group {idx} missing node_range"
-        assert hasattr(group, "tile_count"), f"group {idx} missing tile_count"
-        assert hasattr(group, "execution_order"), f"group {idx} missing execution_order"
-
-        tile_count = _normalize_tile_count(group.tile_count)
-        normalized_group = _GroupConfig(
-            node_range=_to_tuple_pair(group.node_range, "node_range"),
-            tile_count=tile_count,
-            execution_order=_normalize_execution_order(group.execution_order),
-        )
-        _validate_group(normalized_group)
-        normalized_groups.append(normalized_group)
-
-    _validate_ranges(normalized_groups)
-    return normalized_groups
