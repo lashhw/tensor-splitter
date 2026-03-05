@@ -1,16 +1,17 @@
 from collections import namedtuple
 
-from .conv import _conv_input_slice_for_output_2d, _parse_conv_spec
+from .conv import _conv_input_slice_for_output_2d, _parse_conv_spec, _parse_pool_spec
 from .tensor import _tensor_height, _tensor_width
 
-_StagePlan = namedtuple(
-    "_StagePlan",
-    ["stage_ranges", "conv_slices_by_stage", "split_keys"],
-)
-
-_WriterSlot = namedtuple(
-    "_WriterSlot",
-    ["key", "start_index", "limit"],
+_RangePlan = namedtuple(
+    "_RangePlan",
+    [
+        "split_keys",
+        "entry_ranges_by_key",
+        "output_ranges_by_node",
+        "input_ranges_by_node",
+        "spatial_slices_by_node",
+    ],
 )
 
 
@@ -39,97 +40,149 @@ def _partition_ranges_2d(height, width, tile_count):
     return [(h_range, w_range) for h_range in height_ranges for w_range in width_ranges]
 
 
-def _plan_stage_ranges(group_info, tile_count):
-    """
-    Build per-stage required ranges with backward propagation from group output.
+def _merge_range(existing, new_range):
+    if existing is None:
+        return new_range
+    (y0, y1), (x0, x1) = existing
+    (ny0, ny1), (nx0, nx1) = new_range
+    return ((min(y0, ny0), max(y1, ny1)), (min(x0, nx0), max(x1, nx1)))
 
-    stage_ranges[i] is the required range list for the tensor entering node i.
-    stage_ranges[-1] is the required range list for group output (used for final concat).
-    """
-    stage_count = len(group_info.nodes) + 1
-    stage_ranges = [[] for _ in range(stage_count)]
+
+def _merge_range_list(dst_ranges, src_ranges):
+    assert len(dst_ranges) == len(src_ranges), "internal error: range list size mismatch"
+    for idx, src_range in enumerate(src_ranges):
+        assert src_range is not None, "internal error: source range must be initialized"
+        dst_ranges[idx] = _merge_range(dst_ranges[idx], src_range)
+
+
+def _clone_ranges(ranges):
+    return [((y0, y1), (x0, x1)) for (y0, y1), (x0, x1) in ranges]
+
+
+def _require_fully_initialized(ranges, context):
+    assert all(rng is not None for rng in ranges), f"internal error: missing required ranges for {context}"
+
+
+def _propagate_identity_input_ranges(out_ranges, data_input_indices):
+    return {input_index: _clone_ranges(out_ranges) for input_index in data_input_indices}
+
+
+def _propagate_conv_input_ranges(node, node_spec, out_ranges):
+    assert len(node_spec.data_input_indices) == 1, (
+        f"Conv node {node.name} must have exactly one non-constant data input"
+    )
+    main_input_index = node_spec.data_input_indices[0]
+    spec = _parse_conv_spec(node)
+    h_in = _tensor_height(node.inputs[main_input_index])
+    w_in = _tensor_width(node.inputs[main_input_index])
+
+    in_ranges = []
+    conv_slices = []
+    for (y0, y1), (x0, x1) in out_ranges:
+        slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
+        in_ranges.append(
+            (
+                (slice_info.height.slice_start, slice_info.height.slice_end),
+                (slice_info.width.slice_start, slice_info.width.slice_end),
+            )
+        )
+        conv_slices.append(slice_info)
+
+    return {main_input_index: in_ranges}, conv_slices
+
+
+def _propagate_pool_input_ranges(node, node_spec, out_ranges):
+    assert len(node_spec.data_input_indices) == 1, (
+        f"AveragePool node {node.name} must have exactly one non-constant data input"
+    )
+    main_input_index = node_spec.data_input_indices[0]
+    spec = _parse_pool_spec(node)
+    h_in = _tensor_height(node.inputs[main_input_index])
+    w_in = _tensor_width(node.inputs[main_input_index])
+
+    in_ranges = []
+    pool_slices = []
+    for (y0, y1), (x0, x1) in out_ranges:
+        slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
+        in_ranges.append(
+            (
+                (slice_info.height.slice_start, slice_info.height.slice_end),
+                (slice_info.width.slice_start, slice_info.width.slice_end),
+            )
+        )
+        pool_slices.append(slice_info)
+
+    return {main_input_index: in_ranges}, pool_slices
+
+
+def _plan_node_ranges(group_info, tile_count):
     split_keys = _split_keys(tile_count)
-    stage_ranges[-1] = _partition_ranges_2d(
+    split_count = len(split_keys)
+    node_count = len(group_info.nodes)
+
+    output_ranges_by_node = [[None for _ in range(split_count)] for _ in range(node_count)]
+    input_ranges_by_node = [{} for _ in range(node_count)]
+    spatial_slices_by_node = [None for _ in range(node_count)]
+    entry_ranges_by_key = {
+        entry_key: [None for _ in range(split_count)]
+        for entry_key in group_info.entry_tensors
+    }
+
+    output_ranges_by_node[-1] = _partition_ranges_2d(
         height=_tensor_height(group_info.exit_tensor),
         width=_tensor_width(group_info.exit_tensor),
         tile_count=tile_count,
     )
 
-    conv_slices_by_stage = [None for _ in range(stage_count - 1)]
+    for local_index in range(node_count - 1, -1, -1):
+        node_spec = group_info.node_specs[local_index]
+        node = node_spec.node
 
-    for stage_idx in range(stage_count - 2, -1, -1):
-        node = group_info.nodes[stage_idx]
-        out_ranges = stage_ranges[stage_idx + 1]
-        main_idx = group_info.main_input_indices[stage_idx]
-
-        if node.op != "Conv":
-            stage_ranges[stage_idx] = list(out_ranges)
+        if node.op == "Constant":
+            input_ranges_by_node[local_index] = {}
             continue
 
-        spec = _parse_conv_spec(node)
-        h_in = _tensor_height(node.inputs[main_idx])
-        w_in = _tensor_width(node.inputs[main_idx])
+        out_ranges = output_ranges_by_node[local_index]
+        _require_fully_initialized(out_ranges, f"node {node.name} output")
 
-        in_ranges = []
-        conv_slices = []
-        for (y0, y1), (x0, x1) in out_ranges:
-            slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
-            in_ranges.append(
-                (
-                    (slice_info.height.slice_start, slice_info.height.slice_end),
-                    (slice_info.width.slice_start, slice_info.width.slice_end),
-                )
+        if node.op == "Conv":
+            demanded_ranges_by_input, conv_slices = _propagate_conv_input_ranges(node, node_spec, out_ranges)
+            spatial_slices_by_node[local_index] = conv_slices
+        elif node.op == "AveragePool":
+            demanded_ranges_by_input, pool_slices = _propagate_pool_input_ranges(node, node_spec, out_ranges)
+            spatial_slices_by_node[local_index] = pool_slices
+        elif node.op in {"Relu", "BatchNormalization", "Add", "Concat", "Reshape", "Transpose"}:
+            demanded_ranges_by_input = _propagate_identity_input_ranges(
+                out_ranges,
+                node_spec.data_input_indices,
             )
-            conv_slices.append(slice_info)
+        else:
+            assert False, f"unsupported op {node.op} for tiled rewrite planning"
 
-        stage_ranges[stage_idx] = in_ranges
-        conv_slices_by_stage[stage_idx] = conv_slices
+        input_ranges_by_node[local_index] = demanded_ranges_by_input
 
-    return _StagePlan(
-        stage_ranges=stage_ranges,
-        conv_slices_by_stage=conv_slices_by_stage,
+        for input_index, demanded_ranges in demanded_ranges_by_input.items():
+            source = node_spec.input_sources[input_index]
+            if source.kind == "entry":
+                entry_ranges = entry_ranges_by_key[source.entry_key]
+                _merge_range_list(entry_ranges, demanded_ranges)
+            else:
+                producer_out_ranges = output_ranges_by_node[source.producer_local_index]
+                _merge_range_list(producer_out_ranges, demanded_ranges)
+
+    for entry_key, entry_ranges in entry_ranges_by_key.items():
+        entry_tensor = group_info.entry_tensors[entry_key]
+        _require_fully_initialized(entry_ranges, f"group entry tensor {entry_tensor.name}")
+
+    for local_index, node_spec in enumerate(group_info.node_specs):
+        if node_spec.node.op == "Constant":
+            continue
+        _require_fully_initialized(output_ranges_by_node[local_index], f"node {node_spec.node.name} output")
+
+    return _RangePlan(
         split_keys=split_keys,
+        entry_ranges_by_key=entry_ranges_by_key,
+        output_ranges_by_node=output_ranges_by_node,
+        input_ranges_by_node=input_ranges_by_node,
+        spatial_slices_by_node=spatial_slices_by_node,
     )
-
-
-def _build_ordered_node_writer(schedule, first_orig_index):
-    slot_by_key = {}
-    slot_cursor = {}
-    slots = []
-    total_rewritten = 0
-
-    for key in schedule:
-        orig_index, _ = key
-        capacity = 2 if orig_index == first_orig_index else 1
-        slot = _WriterSlot(
-            key=key,
-            start_index=total_rewritten,
-            limit=total_rewritten + capacity,
-        )
-
-        slot_by_key[key] = slot
-        slot_cursor[key] = slot.start_index
-        slots.append(slot)
-        total_rewritten += capacity
-
-    ordered_nodes = [None for _ in range(total_rewritten)]
-
-    def place_node(orig_index, split_id, node):
-        key = (orig_index, split_id)
-        slot = slot_by_key[key]
-        write_idx = slot_cursor[key]
-        assert write_idx < slot.limit, f"execution_order slot {key} has too many rewritten nodes"
-        ordered_nodes[write_idx] = node
-        slot_cursor[key] = write_idx + 1
-
-    def finalize_nodes(concat_nodes):
-        for slot in slots:
-            assert slot_cursor[slot.key] == slot.limit, (
-                f"execution_order slot {slot.key} has missing rewritten nodes"
-            )
-        assert all(node is not None for node in ordered_nodes), "internal error: unfilled ordered node slot"
-        if isinstance(concat_nodes, (list, tuple)):
-            return ordered_nodes + list(concat_nodes)
-        return ordered_nodes + [concat_nodes]
-
-    return place_node, finalize_nodes

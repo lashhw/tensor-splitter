@@ -5,6 +5,11 @@ _ConvSpec = namedtuple(
     ["kernel_shape", "strides", "pads"]
 )
 
+_PoolSpec = namedtuple(
+    "_PoolSpec",
+    ["kernel_shape", "strides", "pads"]
+)
+
 _ConvInputSlice = namedtuple(
     "_ConvInputSlice",
     ["slice_start", "slice_end", "pad_top", "pad_bottom"],
@@ -50,6 +55,17 @@ def _conv_attrs_with_hw_pad(node, slice_info_2d):
     return attrs
 
 
+def _avg_pool_attrs_with_hw_pad(node, slice_info_2d):
+    attrs = dict(node.attrs)
+    attrs["pads"] = [
+        slice_info_2d.height.pad_top,
+        slice_info_2d.width.pad_top,
+        slice_info_2d.height.pad_bottom,
+        slice_info_2d.width.pad_bottom,
+    ]
+    return attrs
+
+
 def _conv_input_slice_for_output_axis(out0, out1, kernel, stride, pad_before, input_size):
     x0 = out0 * stride - pad_before
     x1 = (out1 - 1) * stride - pad_before + kernel
@@ -85,3 +101,16 @@ def _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in):
             input_size=w_in,
         ),
     )
+
+
+def _parse_pool_spec(node):
+    attrs = node.attrs
+
+    assert "auto_pad" not in attrs, "AveragePool auto_pad must be unset in attrs"
+    kernel_shape = _ensure_list(attrs["kernel_shape"], length=2)
+    strides = _ensure_list(attrs.get("strides", [1, 1]), length=2)
+    pads = _ensure_list(attrs.get("pads", [0, 0, 0, 0]), length=4)
+    ceil_mode = attrs.get("ceil_mode", 0)
+    assert ceil_mode == 0, f"AveragePool ceil_mode {ceil_mode} is not supported; expected 0"
+
+    return _PoolSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)

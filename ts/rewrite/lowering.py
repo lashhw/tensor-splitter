@@ -1,7 +1,7 @@
 import numpy as np
 import onnx_graphsurgeon as gs
 
-from .conv import _conv_attrs_with_hw_pad
+from .conv import _avg_pool_attrs_with_hw_pad, _conv_attrs_with_hw_pad
 from .tensor import _shape_with_dim_size
 
 
@@ -17,7 +17,39 @@ def _make_constant(name, values):
     return gs.Constant(name, values)
 
 
-def _build_entry_tiles(entry_tensor, entry_ranges, axis=2):
+def _resolve_constant_input_values(tensor):
+    if isinstance(tensor, gs.Constant):
+        return np.asarray(tensor.values, dtype=np.int64).reshape(-1)
+
+    producers = list(tensor.inputs)
+    if len(producers) != 1 or producers[0].op != "Constant":
+        return None
+
+    value_attr = producers[0].attrs.get("value")
+    if isinstance(value_attr, gs.Constant):
+        return np.asarray(value_attr.values, dtype=np.int64).reshape(-1)
+    if isinstance(value_attr, np.ndarray):
+        return np.asarray(value_attr, dtype=np.int64).reshape(-1)
+    return None
+
+
+def _infer_spatial_axis(shape):
+    assert shape is not None and len(shape) >= 4, (
+        f"tensor shape must have rank >= 4 for spatial rewrite; got {shape}"
+    )
+    return len(shape) - 2
+
+
+def _shape_with_hw(shape, h_size, w_size, axis=None):
+    if axis is None:
+        axis = _infer_spatial_axis(shape)
+    out_shape = _shape_with_dim_size(shape, axis, h_size)
+    return _shape_with_dim_size(out_shape, axis + 1, w_size)
+
+
+def _build_entry_tiles(entry_tensor, entry_ranges, axis=None):
+    if axis is None:
+        axis = _infer_spatial_axis(entry_tensor.shape)
     tiles = []
     slice_nodes = []
     for tile_id, ((start_h, end_h), (start_w, end_w)) in enumerate(entry_ranges):
@@ -25,8 +57,12 @@ def _build_entry_tiles(entry_tensor, entry_ranges, axis=2):
         ends_arr = np.array([end_h, end_w], dtype=np.int64)
         axes_arr = np.array([axis, axis + 1], dtype=np.int64)
         steps_arr = np.array([1, 1], dtype=np.int64)
-        out_shape = _shape_with_dim_size(entry_tensor.shape, axis, end_h - start_h)
-        out_shape = _shape_with_dim_size(out_shape, axis + 1, end_w - start_w)
+        out_shape = _shape_with_hw(
+            entry_tensor.shape,
+            h_size=end_h - start_h,
+            w_size=end_w - start_w,
+            axis=axis,
+        )
 
         base_name = f"{entry_tensor.name}_slice{tile_id}"
         starts = _make_constant(f"{base_name}_starts", starts_arr)
@@ -51,85 +87,101 @@ def _build_entry_tiles(entry_tensor, entry_ranges, axis=2):
     return tiles, slice_nodes
 
 
-def _build_conv_tiles(
+def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, axis=None):
+    if axis is None:
+        axis = _infer_spatial_axis(tile.shape)
+
+    (prod_y0, _), (prod_x0, _) = produced_range
+    (req_y0, req_y1), (req_x0, req_x1) = required_range
+
+    rel_start_h = req_y0 - prod_y0
+    rel_end_h = req_y1 - prod_y0
+    rel_start_w = req_x0 - prod_x0
+    rel_end_w = req_x1 - prod_x0
+
+    starts_arr = np.array([rel_start_h, rel_start_w], dtype=np.int64)
+    ends_arr = np.array([rel_end_h, rel_end_w], dtype=np.int64)
+    axes_arr = np.array([axis, axis + 1], dtype=np.int64)
+    steps_arr = np.array([1, 1], dtype=np.int64)
+    base_name = f"{name_prefix}_crop_s{split_id[0]}_{split_id[1]}"
+
+    starts = _make_constant(f"{base_name}_starts", starts_arr)
+    ends = _make_constant(f"{base_name}_ends", ends_arr)
+    axes = _make_constant(f"{base_name}_axes", axes_arr)
+    steps = _make_constant(f"{base_name}_steps", steps_arr)
+    out = gs.Variable(
+        f"{base_name}_out",
+        dtype=tile.dtype,
+        shape=_shape_with_hw(tile.shape, h_size=req_y1 - req_y0, w_size=req_x1 - req_x0, axis=axis),
+    )
+    node = gs.Node(
+        name=base_name,
+        op="Slice",
+        inputs=[tile, starts, ends, axes, steps],
+        outputs=[out],
+    )
+    return out, node
+
+
+def _build_tiled_node(
     node,
-    tiles,
-    out_ranges,
-    conv_slices,
-    main_input_index,
+    split_id,
+    input_tensors_by_index,
+    out_range,
+    spatial_slice=None,
 ):
-    out_tiles = []
-    new_nodes = []
     node_base_name = _node_base_name(node)
-    for tile_id, (tile, ((y0, y1), (x0, x1)), slice_info) in enumerate(zip(tiles, out_ranges, conv_slices)):
-        attrs = _conv_attrs_with_hw_pad(node, slice_info)
-        out_shape = _shape_with_dim_size(node.outputs[0].shape, 2, y1 - y0)
-        out_shape = _shape_with_dim_size(out_shape, 3, x1 - x0)
 
-        conv_inputs = list(node.inputs)
-        conv_inputs[main_input_index] = tile
+    new_inputs = list(node.inputs)
+    for input_index, tensor in input_tensors_by_index.items():
+        new_inputs[input_index] = tensor
 
-        conv_out = gs.Variable(
-            f"{node.outputs[0].name}_split{tile_id}",
-            dtype=node.outputs[0].dtype,
-            shape=out_shape,
-        )
-        out_tiles.append(conv_out)
+    if node.op == "Constant":
+        out_shape = list(node.outputs[0].shape) if node.outputs[0].shape is not None else None
+    else:
+        assert out_range is not None, f"out_range is required when lowering op {node.op}"
+        (y0, y1), (x0, x1) = out_range
+        out_shape = _shape_with_hw(node.outputs[0].shape, h_size=y1 - y0, w_size=x1 - x0)
 
-        conv_node = gs.Node(
-            name=f"{node_base_name}_split{tile_id}",
-            op="Conv",
-            inputs=conv_inputs,
-            outputs=[conv_out],
-            attrs=attrs,
-        )
-        new_nodes.append(conv_node)
+    if node.op == "Reshape" and len(new_inputs) >= 2:
+        shape_values = _resolve_constant_input_values(node.inputs[1])
+        if shape_values is not None and shape_values.size >= 2:
+            target_h = out_shape[-2]
+            target_w = out_shape[-1]
+            if isinstance(target_h, int) and isinstance(target_w, int):
+                reshaped = shape_values.copy()
+                if reshaped[-2] > 0:
+                    reshaped[-2] = target_h
+                if reshaped[-1] > 0:
+                    reshaped[-1] = target_w
+                new_inputs[1] = _make_constant(
+                    f"{node_base_name}_shape_s{split_id[0]}_{split_id[1]}",
+                    reshaped.astype(np.int64),
+                )
 
-    return out_tiles, new_nodes
+    out = gs.Variable(
+        f"{node.outputs[0].name}_split_s{split_id[0]}_{split_id[1]}",
+        dtype=node.outputs[0].dtype,
+        shape=out_shape,
+    )
 
-
-def _build_non_conv_tiles(
-    node,
-    tiles,
-    main_input_index,
-):
-    out_tiles = []
-    new_nodes = []
-
-    for tile_id, tile in enumerate(tiles):
-        inputs = list(node.inputs)
-        inputs[main_input_index] = tile
-
-        out = gs.Variable(
-            f"{node.outputs[0].name}_split{tile_id}",
-            dtype=node.outputs[0].dtype,
-            shape=tile.shape,
-        )
-        out_tiles.append(out)
-
-        new_node = gs.Node(
-            name=f"{_node_base_name(node)}_split{tile_id}",
-            op=node.op,
-            inputs=inputs,
-            outputs=[out],
-            attrs=dict(node.attrs) if node.attrs else {},
-        )
-        new_nodes.append(new_node)
-
-    return out_tiles, new_nodes
-
-
-def _build_stage_tiles(
-    node,
-    tiles,
-    out_ranges,
-    main_input_index,
-    conv_slices=None,
-):
     if node.op == "Conv":
-        assert conv_slices is not None, "conv_slices are required for Conv lowering"
-        return _build_conv_tiles(node, tiles, out_ranges, conv_slices, main_input_index)
-    return _build_non_conv_tiles(node, tiles, main_input_index)
+        assert spatial_slice is not None, "spatial slice is required when lowering Conv nodes"
+        attrs = _conv_attrs_with_hw_pad(node, spatial_slice)
+    elif node.op == "AveragePool":
+        assert spatial_slice is not None, "spatial slice is required when lowering AveragePool nodes"
+        attrs = _avg_pool_attrs_with_hw_pad(node, spatial_slice)
+    else:
+        attrs = dict(node.attrs) if node.attrs else {}
+
+    new_node = gs.Node(
+        name=f"{node_base_name}_split_s{split_id[0]}_{split_id[1]}",
+        op=node.op,
+        inputs=new_inputs,
+        outputs=[out],
+        attrs=attrs,
+    )
+    return out, new_node
 
 
 def _build_group_concat(tiles, axis, output_tensor, split_keys, tile_count):
