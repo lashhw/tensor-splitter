@@ -12,12 +12,6 @@ def _parse_args():
     parser.add_argument("input", help="Path to input ONNX model")
     parser.add_argument("config", help="Path to split configuration JSON")
     parser.add_argument("output", help="Path to output ONNX model")
-    parser.add_argument(
-        "--verify",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Run ONNX Runtime numerical verification (default: enabled)",
-    )
     return parser.parse_args()
 
 
@@ -29,11 +23,10 @@ def main():
     rewritten = rewrite_model(model, groups)
     onnx.save(rewritten, args.output)
 
-    if args.verify:
-        ok, diffs = verify_model(model, rewritten)
-        for name, diff in diffs.items():
-            print(f"{name}: max_abs_diff={diff}")
-        print("PASS" if ok else "FAIL")
+    ok, diffs = verify_model(model, rewritten)
+    for name, diff in diffs.items():
+        print(f"{name}: max_abs_diff={diff}")
+    print("PASS" if ok else "FAIL")
 
 
 if __name__ == "__main__":
