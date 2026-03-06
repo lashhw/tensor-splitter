@@ -15,6 +15,67 @@ def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles_by_key, 
     return tile, produced_range
 
 
+def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, scheduled_nodes):
+    if produced_range == required_range:
+        return tile
+
+    cropped_tile, crop_node = _build_tile_crop(
+        tile=tile,
+        produced_range=produced_range,
+        required_range=required_range,
+        split_id=split_id,
+        name_prefix=name_prefix,
+    )
+    scheduled_nodes.append(crop_node)
+    return cropped_tile
+
+
+def _iter_stitch_targets(group_info):
+    sink_local_index = len(group_info.nodes) - 1
+    yield sink_local_index, group_info.exit_tensor
+    for spec in group_info.boundary_output_specs:
+        yield spec.local_index, spec.output_tensor
+
+
+def _iter_stitched_output_tensors(group_info):
+    yield group_info.exit_tensor
+    for spec in group_info.boundary_output_specs:
+        yield spec.output_tensor
+
+
+def _build_stitched_output(
+    local_index,
+    output_tensor,
+    produced_tiles,
+    produced_ranges,
+    stitch_ranges,
+    split_keys,
+    tile_count,
+):
+    stitch_tiles = []
+    stitch_nodes = []
+    for split_pos, split_id in enumerate(split_keys):
+        stitched_tile = _crop_tile_if_needed(
+            tile=produced_tiles[split_pos],
+            produced_range=produced_ranges[split_pos],
+            required_range=stitch_ranges[split_pos],
+            split_id=split_id,
+            name_prefix=f"{output_tensor.name}_stitch_l{local_index}",
+            scheduled_nodes=stitch_nodes,
+        )
+        stitch_tiles.append(stitched_tile)
+
+    stitched_out, concat_nodes = _build_group_concat(
+        stitch_tiles,
+        axis=2,
+        output_tensor=output_tensor,
+        split_keys=split_keys,
+        tile_count=tile_count,
+    )
+    stitch_nodes.extend(concat_nodes)
+    return stitched_out, stitch_nodes
+
+
 def _build_group(group_info, group_cfg, node_index_map):
     range_plan = _plan_node_ranges(group_info, group_cfg.tile_count)
     split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
@@ -65,20 +126,14 @@ def _build_group(group_info, group_cfg, node_index_map):
                 continue
 
             required_range = demanded_ranges[input_index][split_pos]
-            if produced_range == required_range:
-                input_tensors_by_index[input_index] = source_tile
-                continue
-
-            crop_name_prefix = f"{node.name or node.op}_in{input_index}"
-            cropped_tile, crop_node = _build_tile_crop(
+            input_tensors_by_index[input_index] = _crop_tile_if_needed(
                 tile=source_tile,
                 produced_range=produced_range,
                 required_range=required_range,
                 split_id=split_id,
-                name_prefix=crop_name_prefix,
+                name_prefix=f"{node.name or node.op}_in{input_index}",
+                scheduled_nodes=scheduled_nodes,
             )
-            scheduled_nodes.append(crop_node)
-            input_tensors_by_index[input_index] = cropped_tile
 
         out_range = None
         if node.op != "Constant":
@@ -108,34 +163,56 @@ def _build_group(group_info, group_cfg, node_index_map):
             f"execution_order has missing rewritten nodes for node index {group_info.node_range[0] + local_index}"
         )
 
-    exit_tiles = tiles_by_local_index[-1]
-    concat_out, concat_nodes = _build_group_concat(
-        exit_tiles,
-        axis=2,
-        output_tensor=group_info.exit_tensor,
-        split_keys=range_plan.split_keys,
-        tile_count=group_cfg.tile_count,
-    )
+    stitched_outputs_by_tensor_id = {}
+    stitch_nodes = []
+    seen_local_indices = set()
+    for local_index, output_tensor in _iter_stitch_targets(group_info):
+        if local_index in seen_local_indices:
+            continue
+        seen_local_indices.add(local_index)
 
-    ordered_nodes = entry_slice_nodes + scheduled_nodes + list(concat_nodes)
+        stitched_out, stitched_nodes = _build_stitched_output(
+            local_index=local_index,
+            output_tensor=output_tensor,
+            produced_tiles=tiles_by_local_index[local_index],
+            produced_ranges=range_plan.output_ranges_by_node[local_index],
+            stitch_ranges=range_plan.stitch_ranges_by_local_index[local_index],
+            split_keys=range_plan.split_keys,
+            tile_count=group_cfg.tile_count,
+        )
+        stitched_outputs_by_tensor_id[id(output_tensor)] = stitched_out
+        stitch_nodes.extend(stitched_nodes)
+
+    ordered_nodes = entry_slice_nodes + scheduled_nodes + stitch_nodes
     _ensure_toposorted(ordered_nodes)
-    return ordered_nodes, concat_out
+    return ordered_nodes, stitched_outputs_by_tensor_id
 
 
-def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
+def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, stitched_outputs_by_tensor_id):
     node_a = orig_nodes[group_cfg.node_range[0]]
     node_b = orig_nodes[group_cfg.node_range[1]]
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
     end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
+    group_node_ids = {id(node) for node in group_info.nodes}
 
-    for consumer in list(group_info.exit_tensor.outputs):
-        for idx, inp in enumerate(consumer.inputs):
-            if inp is group_info.exit_tensor:
-                consumer.inputs[idx] = concat_out
+    seen_tensor_ids = set()
+    for output_tensor in _iter_stitched_output_tensors(group_info):
+        tensor_id = id(output_tensor)
+        if tensor_id in seen_tensor_ids:
+            continue
+        seen_tensor_ids.add(tensor_id)
 
-    for idx, out in enumerate(graph.outputs):
-        if out is group_info.exit_tensor:
-            graph.outputs[idx] = concat_out
+        stitched_out = stitched_outputs_by_tensor_id[tensor_id]
+        for consumer in list(output_tensor.outputs):
+            if id(consumer) in group_node_ids:
+                continue
+            for idx, inp in enumerate(consumer.inputs):
+                if inp is output_tensor:
+                    consumer.inputs[idx] = stitched_out
+
+        for idx, out in enumerate(graph.outputs):
+            if out is output_tensor:
+                graph.outputs[idx] = stitched_out
 
     for node in group_info.nodes:
         node.inputs = []

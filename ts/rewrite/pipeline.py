@@ -20,8 +20,15 @@ def rewrite_model(model, groups):
 
     for group_cfg in groups_sorted:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, concat_out = _build_group(group_info, group_cfg, node_index_map)
-        _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out)
+        new_nodes, stitched_outputs_by_tensor_id = _build_group(group_info, group_cfg, node_index_map)
+        _apply_group(
+            graph,
+            orig_nodes,
+            group_info,
+            group_cfg,
+            new_nodes,
+            stitched_outputs_by_tensor_id,
+        )
 
     out_model = gs.export_onnx(graph)
     out_model = onnx.shape_inference.infer_shapes(out_model)

@@ -24,6 +24,11 @@ _NodeSpec = namedtuple(
     ["node", "local_index", "data_input_indices", "input_sources"],
 )
 
+_BoundaryOutputSpec = namedtuple(
+    "_BoundaryOutputSpec",
+    ["local_index", "output_tensor"],
+)
+
 _GroupInfo = namedtuple(
     "_GroupInfo",
     [
@@ -31,6 +36,7 @@ _GroupInfo = namedtuple(
         "nodes",
         "entry_tensors",
         "exit_tensor",
+        "boundary_output_specs",
         "node_specs",
         "node_spec_by_id",
     ],
@@ -217,19 +223,31 @@ def _collect_node_specs(group_nodes):
 
     join_node = group_nodes[join_local_index]
     group_node_ids = {id(node) for node in group_nodes}
+    boundary_output_specs = []
     for spec in node_specs:
-        if id(spec.node) == id(join_node):
-            continue
         out_tensor = spec.node.outputs[0]
+        external_consumers = []
         for consumer in out_tensor.outputs:
-            if id(consumer) not in group_node_ids:
-                assert False, (
-                    f"node {spec.node.name} output has external consumer {consumer.name}; "
-                    "only sink output may leave the group"
-                )
+            if id(consumer) in group_node_ids:
+                continue
+
+            external_consumers.append(consumer)
+
+        if not external_consumers or id(spec.node) == id(join_node):
+            continue
+
+        assert spec.local_index in flow_local_indices, (
+            f"node {spec.node.name} output leaves the group but is not in the tiled dataflow"
+        )
+        boundary_output_specs.append(
+            _BoundaryOutputSpec(
+                local_index=spec.local_index,
+                output_tensor=out_tensor,
+            )
+        )
 
     node_spec_by_id = {id(spec.node): spec for spec in node_specs}
-    return external_tensors, node_specs, node_spec_by_id
+    return external_tensors, boundary_output_specs, node_specs, node_spec_by_id
 
 
 def _analyze_group(orig_nodes, node_range):
@@ -240,13 +258,14 @@ def _analyze_group(orig_nodes, node_range):
 
     group_nodes = orig_nodes[a : b + 1]
     exit_tensor = group_nodes[-1].outputs[0]
-    entry_tensors, node_specs, node_spec_by_id = _collect_node_specs(group_nodes)
+    entry_tensors, boundary_output_specs, node_specs, node_spec_by_id = _collect_node_specs(group_nodes)
 
     return _GroupInfo(
         node_range=node_range,
         nodes=group_nodes,
         entry_tensors=entry_tensors,
         exit_tensor=exit_tensor,
+        boundary_output_specs=tuple(boundary_output_specs),
         node_specs=node_specs,
         node_spec_by_id=node_spec_by_id,
     )
