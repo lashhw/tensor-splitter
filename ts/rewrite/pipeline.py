@@ -10,6 +10,7 @@ _TARGET_OPSET = 11
 def rewrite_model(model, groups):
     model = onnx.version_converter.convert_version(model, _TARGET_OPSET)
     model = onnx.shape_inference.infer_shapes(model)
+
     graph = gs.import_onnx(model)
     orig_nodes = list(graph.nodes)
     _ensure_toposorted(orig_nodes)

@@ -45,13 +45,14 @@ def _ensure_toposorted(nodes):
                 producer_idx = index.get(id(producer))
                 if producer_idx is None:
                     continue
-                assert producer_idx <= node_idx, "graph nodes are not topologically sorted"
+                assert producer_idx < node_idx, "graph nodes are not topologically sorted"
 
 
 def _ensure_supported_op(node):
     assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
     if node.op == "Concat":
-        axis = node.attrs.get("axis", 1)
+        axis = node.attrs.get("axis")
+        assert axis is not None, f"Concat node {node.name} must define axis"
         assert axis == 1, f"Concat axis must be 1 for tiled rewrite; got {axis}"
     if node.op == "Transpose":
         perm = node.attrs.get("perm")
