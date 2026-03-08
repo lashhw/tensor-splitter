@@ -73,21 +73,18 @@ def _collect_node_specs(group_nodes):
 
     for local_index, node in enumerate(group_nodes):
         _ensure_supported_op(node)
-        assert len(node.outputs) == 1, f"node {node.name} must have a single output"
+        assert len(node.outputs) == 1
 
         data_input_indices = []
         input_sources = {}
         internal_input_count = 0
 
         for input_index, tensor in enumerate(node.inputs):
-            producers = list(tensor.inputs)
             if _is_constant(tensor):
                 continue
 
-            assert len(producers) <= 1, (
-                f"node {node.name} input {tensor.name} must have at most one producer; "
-                f"found {len(producers)}"
-            )
+            producers = list(tensor.inputs)
+            assert len(producers) <= 1
 
             if producers and producers[0].op == "Constant":
                 producer_local_index = local_index_by_id.get(id(producers[0]))
