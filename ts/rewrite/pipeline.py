@@ -1,7 +1,7 @@
 import onnx
 import onnx_graphsurgeon as gs
 
-from .analysis import _analyze_group, _ensure_toposorted
+from .analysis import _analyze_group
 from .assembly import _apply_group, _build_group
 
 _TARGET_OPSET = 11
@@ -36,7 +36,6 @@ def rewrite_model(model, groups):
         print(f"Found {total_constant_count} Constant nodes; removed them before splitting.")
 
     orig_nodes = list(graph.nodes)
-    _ensure_toposorted(orig_nodes)
 
     for group_cfg in groups:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)

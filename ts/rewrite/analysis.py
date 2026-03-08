@@ -243,6 +243,8 @@ def _collect_node_specs(group_nodes):
 
 
 def _analyze_group(orig_nodes, node_range):
+    _ensure_toposorted(orig_nodes)
+
     a, b = node_range
     assert a >= 0 and b < len(orig_nodes) and a <= b
 
