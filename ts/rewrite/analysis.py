@@ -141,17 +141,14 @@ def _collect_node_specs(group_nodes):
     sink_local_indices = [idx for idx, outgoing in enumerate(out_edges) if not outgoing]
     assert len(sink_local_indices) == 1, "group must have exactly one sink node"
 
+    source_local_index = source_local_indices[0]
     sink_local_index = sink_local_indices[0]
     assert sink_local_index == len(group_nodes) - 1, "group sink node must be the last node in node_range"
 
-    if not join_local_indices:
-        join_local_index = sink_local_index
-    else:
-        assert len(join_local_indices) == 1, "group may have at most one join node with multiple internal data inputs"
-        join_local_index = join_local_indices[0]
-        assert join_local_index == len(group_nodes) - 1, "join node must be the last node in node_range"
+    if join_local_indices:
+        assert len(join_local_indices) == 1, "group may have at most one join node"
+        assert join_local_indices[0] == sink_local_index, "join node must be the sink node"
 
-    source_local_index = source_local_indices[0]
     reachable_from_source = set()
     stack = [source_local_index]
     while stack:
@@ -161,24 +158,24 @@ def _collect_node_specs(group_nodes):
         reachable_from_source.add(cur)
         stack.extend(out_edges[cur])
 
-    can_reach_join = set()
-    stack = [join_local_index]
+    can_reach_sink = set()
+    stack = [sink_local_index]
     while stack:
         cur = stack.pop()
-        if cur in can_reach_join:
+        if cur in can_reach_sink:
             continue
-        can_reach_join.add(cur)
+        can_reach_sink.add(cur)
         stack.extend(in_edges[cur])
 
     for spec in node_specs:
         assert spec.local_index in reachable_from_source, (
             f"node {spec.node.name} is not reachable from group source node"
         )
-        assert spec.local_index in can_reach_join, (
-            f"node {spec.node.name} does not feed the group join node"
+        assert spec.local_index in can_reach_sink, (
+            f"node {spec.node.name} does not feed the group sink node"
         )
 
-    join_node = group_nodes[join_local_index]
+    sink_node = group_nodes[sink_local_index]
     group_node_ids = {id(node) for node in group_nodes}
     boundary_output_specs = []
     for spec in node_specs:
@@ -190,7 +187,7 @@ def _collect_node_specs(group_nodes):
 
             external_consumers.append(consumer)
 
-        if not external_consumers or id(spec.node) == id(join_node):
+        if not external_consumers or id(spec.node) == id(sink_node):
             continue
 
         boundary_output_specs.append(
