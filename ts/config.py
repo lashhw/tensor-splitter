@@ -76,5 +76,6 @@ def parse_config(path):
         _validate_group(normalized_group)
         normalized_groups.append(normalized_group)
 
-    _validate_ranges(normalized_groups)
-    return normalized_groups
+    groups_sorted = sorted(normalized_groups, key=lambda group: group.node_range[0])
+    _validate_ranges(groups_sorted)
+    return groups_sorted

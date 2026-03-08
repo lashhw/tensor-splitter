@@ -38,12 +38,9 @@ def rewrite_model(model, groups):
     orig_nodes = list(graph.nodes)
     _ensure_toposorted(orig_nodes)
 
-    groups_sorted = sorted(groups, key=lambda g: g.node_range[0])
-    node_index_map = {id(node): idx for idx, node in enumerate(orig_nodes)}
-
-    for group_cfg in groups_sorted:
+    for group_cfg in groups:
         group_info = _analyze_group(orig_nodes, group_cfg.node_range)
-        new_nodes, stitched_outputs_by_tensor_id = _build_group(group_info, group_cfg, node_index_map)
+        new_nodes, stitched_outputs_by_tensor_id = _build_group(group_info, group_cfg)
         _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, stitched_outputs_by_tensor_id)
 
     out_model = gs.export_onnx(graph)

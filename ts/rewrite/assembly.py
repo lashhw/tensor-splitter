@@ -76,12 +76,10 @@ def _build_stitched_output(
     return stitched_out, stitch_nodes
 
 
-def _build_group(group_info, group_cfg, node_index_map):
+def _build_group(group_info, group_cfg):
     range_plan = _plan_node_ranges(group_info, group_cfg.tile_count)
     split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
-    local_index_by_orig_index = {
-        node_index_map[id(node)]: local_index for local_index, node in enumerate(group_info.nodes)
-    }
+    group_start, _ = group_info.node_range
 
     entry_tiles_by_key = {}
     entry_slice_nodes = []
@@ -98,8 +96,8 @@ def _build_group(group_info, group_cfg, node_index_map):
     for orig_index, split_id in group_cfg.execution_order:
         assert split_id in split_pos_by_key, f"invalid split id {split_id} in execution_order"
         split_pos = split_pos_by_key[split_id]
-        local_index = local_index_by_orig_index.get(orig_index)
-        assert local_index is not None, (
+        local_index = orig_index - group_start
+        assert 0 <= local_index < len(group_info.nodes), (
             f"node index {orig_index} in execution_order is outside group range {group_info.node_range}"
         )
 
