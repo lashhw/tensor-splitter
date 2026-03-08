@@ -116,8 +116,8 @@ def _propagate_pool_input_ranges(node, node_spec, out_ranges):
     return {main_input_index: in_ranges}, pool_slices
 
 
-def _plan_node_ranges(group_info, tile_count):
-    split_keys = _split_keys(tile_count)
+def _plan_node_ranges(group_info):
+    split_keys = _split_keys(group_info.tile_count)
     split_count = len(split_keys)
     node_count = len(group_info.nodes)
 
@@ -142,7 +142,7 @@ def _plan_node_ranges(group_info, tile_count):
         stitch_ranges = _partition_ranges_2d(
             height=_tensor_height(output_tensor),
             width=_tensor_width(output_tensor),
-            tile_count=tile_count,
+            tile_count=group_info.tile_count,
         )
         stitch_ranges_by_local_index[local_index] = stitch_ranges
         output_ranges_by_node[local_index] = _clone_ranges(stitch_ranges)

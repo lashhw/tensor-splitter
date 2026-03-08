@@ -77,7 +77,7 @@ def _build_stitched_output(
 
 
 def _build_group(group_info):
-    range_plan = _plan_node_ranges(group_info, group_info.tile_count)
+    range_plan = _plan_node_ranges(group_info)
     split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
     group_start, _ = group_info.node_range
 
