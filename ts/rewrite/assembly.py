@@ -76,8 +76,8 @@ def _build_stitched_output(
     return stitched_out, stitch_nodes
 
 
-def _build_group(group_info, group_cfg):
-    range_plan = _plan_node_ranges(group_info, group_cfg.tile_count)
+def _build_group(group_info):
+    range_plan = _plan_node_ranges(group_info, group_info.tile_count)
     split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
     group_start, _ = group_info.node_range
 
@@ -93,7 +93,7 @@ def _build_group(group_info, group_cfg):
     scheduled_nodes = []
     built_node_count = 0
 
-    for orig_index, split_id in group_cfg.execution_order:
+    for orig_index, split_id in group_info.execution_order:
         assert split_id in split_pos_by_key, f"invalid split id {split_id} in execution_order"
         split_pos = split_pos_by_key[split_id]
         local_index = orig_index - group_start
@@ -149,7 +149,7 @@ def _build_group(group_info, group_cfg):
         scheduled_nodes.append(new_node)
         built_node_count += 1
 
-    expected_built_count = len(group_cfg.execution_order)
+    expected_built_count = len(group_info.execution_order)
     assert built_node_count == expected_built_count, (
         f"internal error: expected {expected_built_count} rewritten op nodes, got {built_node_count}"
     )
@@ -174,7 +174,7 @@ def _build_group(group_info, group_cfg):
             produced_ranges=range_plan.output_ranges_by_node[local_index],
             stitch_ranges=range_plan.stitch_ranges_by_local_index[local_index],
             split_keys=range_plan.split_keys,
-            tile_count=group_cfg.tile_count,
+            tile_count=group_info.tile_count,
         )
         stitched_outputs_by_tensor_id[id(output_tensor)] = stitched_out
         stitch_nodes.extend(stitched_nodes)
@@ -184,9 +184,9 @@ def _build_group(group_info, group_cfg):
     return ordered_nodes, stitched_outputs_by_tensor_id
 
 
-def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, stitched_outputs_by_tensor_id):
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
+def _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_outputs_by_tensor_id):
+    node_a = orig_nodes[group_info.node_range[0]]
+    node_b = orig_nodes[group_info.node_range[1]]
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
     end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
     group_node_ids = {id(node) for node in group_info.nodes}

@@ -32,6 +32,8 @@ _GroupInfo = namedtuple(
     "_GroupInfo",
     [
         "node_range",
+        "tile_count",
+        "execution_order",
         "nodes",
         "entry_tensors",
         "exit_tensor",
@@ -198,10 +200,10 @@ def _collect_node_specs(group_nodes):
     return external_tensors, boundary_output_specs, node_specs, node_spec_by_id
 
 
-def _analyze_group(orig_nodes, node_range):
+def _analyze_group(orig_nodes, group_cfg):
     _ensure_toposorted(orig_nodes)
 
-    a, b = node_range
+    a, b = group_cfg.node_range
     assert a >= 0 and b < len(orig_nodes) and a <= b
 
     group_nodes = orig_nodes[a : b + 1]
@@ -209,7 +211,9 @@ def _analyze_group(orig_nodes, node_range):
     exit_tensor = group_nodes[-1].outputs[0]
 
     return _GroupInfo(
-        node_range=node_range,
+        node_range=group_cfg.node_range,
+        tile_count=group_cfg.tile_count,
+        execution_order=group_cfg.execution_order,
         nodes=group_nodes,
         entry_tensors=entry_tensors,
         exit_tensor=exit_tensor,
