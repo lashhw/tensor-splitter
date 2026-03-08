@@ -135,19 +135,15 @@ def _collect_node_specs(group_nodes):
         out_edges[src].append(dst)
         in_edges[dst].append(src)
 
-    flow_local_indices = {spec.local_index for spec in node_specs if spec.data_input_indices}
-    assert flow_local_indices, "group must contain at least one dataflow node"
-
-    source_local_indices = [idx for idx in flow_local_indices if in_degree[idx] == 0]
+    source_local_indices = [idx for idx, deg in enumerate(in_degree) if deg == 0]
     assert len(source_local_indices) == 1, "group must have exactly one source node"
 
-    sink_local_indices = [idx for idx in flow_local_indices if not any(dst in flow_local_indices for dst in out_edges[idx])]
+    sink_local_indices = [idx for idx, outgoing in enumerate(out_edges) if not outgoing]
     assert len(sink_local_indices) == 1, "group must have exactly one sink node"
 
     sink_local_index = sink_local_indices[0]
     assert sink_local_index == len(group_nodes) - 1, "group sink node must be the last node in node_range"
 
-    join_local_indices = [idx for idx in join_local_indices if idx in flow_local_indices]
     if not join_local_indices:
         join_local_index = sink_local_index
     else:
@@ -163,7 +159,7 @@ def _collect_node_specs(group_nodes):
         if cur in reachable_from_source:
             continue
         reachable_from_source.add(cur)
-        stack.extend(dst for dst in out_edges[cur] if dst in flow_local_indices)
+        stack.extend(out_edges[cur])
 
     can_reach_join = set()
     stack = [join_local_index]
@@ -172,11 +168,9 @@ def _collect_node_specs(group_nodes):
         if cur in can_reach_join:
             continue
         can_reach_join.add(cur)
-        stack.extend(src for src in in_edges[cur] if src in flow_local_indices)
+        stack.extend(in_edges[cur])
 
     for spec in node_specs:
-        if spec.local_index not in flow_local_indices:
-            continue
         assert spec.local_index in reachable_from_source, (
             f"node {spec.node.name} is not reachable from group source node"
         )
@@ -199,9 +193,6 @@ def _collect_node_specs(group_nodes):
         if not external_consumers or id(spec.node) == id(join_node):
             continue
 
-        assert spec.local_index in flow_local_indices, (
-            f"node {spec.node.name} output leaves the group but is not in the tiled dataflow"
-        )
         boundary_output_specs.append(
             _BoundaryOutputSpec(
                 local_index=spec.local_index,
