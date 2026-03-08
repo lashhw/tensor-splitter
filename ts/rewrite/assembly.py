@@ -3,6 +3,11 @@ from .lowering import _build_entry_tiles, _build_group_concat, _build_tile_crop,
 from .planning import _plan_node_ranges
 
 
+def _group_name_scope(group_info):
+    start, end = group_info.node_range
+    return f"g{start}_{end}"
+
+
 def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles_by_key, source, split_pos):
     if source.kind == "entry":
         entry_tiles = entry_tiles_by_key[source.entry_key]
@@ -15,7 +20,7 @@ def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles_by_key, 
     return tile, produced_range
 
 
-def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, scheduled_nodes):
+def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, scheduled_nodes, name_scope):
     if produced_range == required_range:
         return tile
 
@@ -25,6 +30,7 @@ def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_pr
         required_range=required_range,
         split_id=split_id,
         name_prefix=name_prefix,
+        name_scope=name_scope,
     )
     scheduled_nodes.append(crop_node)
     return cropped_tile
@@ -45,6 +51,7 @@ def _build_stitched_output(
     range_plan,
     tile_count,
     stitch_nodes,
+    name_scope,
 ):
     stitch_tiles = []
     stitch_ranges = range_plan.stitch_ranges_by_local_index[local_index]
@@ -56,6 +63,7 @@ def _build_stitched_output(
             split_id=split_id,
             name_prefix=f"{output_tensor.name}_stitch_l{local_index}",
             scheduled_nodes=stitch_nodes,
+            name_scope=name_scope,
         )
         stitch_tiles.append(stitched_tile)
 
@@ -64,6 +72,7 @@ def _build_stitched_output(
         output_tensor=output_tensor,
         split_keys=range_plan.split_keys,
         tile_count=tile_count,
+        name_scope=name_scope,
     )
     stitch_nodes.extend(concat_nodes)
     return stitched_out
@@ -73,12 +82,17 @@ def _build_group(group_info):
     range_plan = _plan_node_ranges(group_info)
     split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
     group_start, _ = group_info.node_range
+    name_scope = _group_name_scope(group_info)
 
     entry_tiles_by_key = {}
     entry_slice_nodes = []
     for entry_key, entry_tensor in group_info.entry_tensors.items():
         entry_ranges = range_plan.entry_ranges_by_key[entry_key]
-        entry_tiles, entry_nodes = _build_entry_tiles(entry_tensor, entry_ranges)
+        entry_tiles, entry_nodes = _build_entry_tiles(
+            entry_tensor,
+            entry_ranges,
+            name_scope=name_scope,
+        )
         entry_tiles_by_key[entry_key] = entry_tiles
         entry_slice_nodes.extend(entry_nodes)
 
@@ -121,8 +135,9 @@ def _build_group(group_info):
                 produced_range=produced_range,
                 required_range=required_range,
                 split_id=split_id,
-                name_prefix=f"{node.name or node.op}_in{input_index}",
+                name_prefix=f"{node.name or node.op}_l{local_index}_in{input_index}",
                 scheduled_nodes=rewritten_nodes,
+                name_scope=name_scope,
             )
 
         out_range = range_plan.output_ranges_by_node[local_index][split_pos]
@@ -136,6 +151,7 @@ def _build_group(group_info):
             input_tensors_by_index=input_tensors_by_index,
             out_range=out_range,
             spatial_slice=spatial_slice,
+            name_scope=name_scope,
         )
         tiles_by_local_index[local_index][split_pos] = output_tile
         rewritten_nodes.append(new_node)
@@ -156,6 +172,7 @@ def _build_group(group_info):
             range_plan=range_plan,
             tile_count=group_info.tile_count,
             stitch_nodes=stitch_nodes,
+            name_scope=name_scope,
         )
         stitched_outputs_by_tensor_id[id(output_tensor)] = stitched_out
 

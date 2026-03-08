@@ -17,6 +17,12 @@ def _make_constant(name, values):
     return gs.Constant(name, values)
 
 
+def _scoped_name(name_scope, base_name):
+    if not name_scope:
+        return base_name
+    return f"{name_scope}__{base_name}"
+
+
 def _resolve_constant_input_values(tensor):
     if isinstance(tensor, gs.Constant):
         return np.asarray(tensor.values, dtype=np.int64).reshape(-1)
@@ -36,7 +42,7 @@ def _shape_with_hw(shape, h_size, w_size):
     return _shape_with_dim_size(out_shape, axis + 1, w_size)
 
 
-def _build_entry_tiles(entry_tensor, entry_ranges):
+def _build_entry_tiles(entry_tensor, entry_ranges, name_scope=None):
     axis = _infer_spatial_axis(entry_tensor.shape)
     tiles = []
     slice_nodes = []
@@ -51,13 +57,13 @@ def _build_entry_tiles(entry_tensor, entry_ranges):
             w_size=end_w - start_w,
         )
 
-        base_name = f"{entry_tensor.name}_slice{tile_id}"
+        base_name = _scoped_name(name_scope, f"{entry_tensor.name}_slice{tile_id}")
         starts = _make_constant(f"{base_name}_starts", starts_arr)
         ends = _make_constant(f"{base_name}_ends", ends_arr)
         axes = _make_constant(f"{base_name}_axes", axes_arr)
         steps = _make_constant(f"{base_name}_steps", steps_arr)
         out = gs.Variable(
-            f"{entry_tensor.name}_split{tile_id}",
+            _scoped_name(name_scope, f"{entry_tensor.name}_split{tile_id}"),
             dtype=entry_tensor.dtype,
             shape=out_shape,
         )
@@ -74,7 +80,7 @@ def _build_entry_tiles(entry_tensor, entry_ranges):
     return tiles, slice_nodes
 
 
-def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix):
+def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope=None):
     axis = _infer_spatial_axis(tile.shape)
 
     (prod_y0, _), (prod_x0, _) = produced_range
@@ -89,7 +95,7 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
     ends_arr = np.array([rel_end_h, rel_end_w], dtype=np.int64)
     axes_arr = np.array([axis, axis + 1], dtype=np.int64)
     steps_arr = np.array([1, 1], dtype=np.int64)
-    base_name = f"{name_prefix}_crop_s{split_id[0]}_{split_id[1]}"
+    base_name = _scoped_name(name_scope, f"{name_prefix}_crop_s{split_id[0]}_{split_id[1]}")
 
     starts = _make_constant(f"{base_name}_starts", starts_arr)
     ends = _make_constant(f"{base_name}_ends", ends_arr)
@@ -115,6 +121,7 @@ def _build_tiled_node(
     input_tensors_by_index,
     out_range,
     spatial_slice=None,
+    name_scope=None,
 ):
     node_base_name = _node_base_name(node)
 
@@ -138,12 +145,12 @@ def _build_tiled_node(
                 if reshaped[-1] > 0:
                     reshaped[-1] = target_w
                 new_inputs[1] = _make_constant(
-                    f"{node_base_name}_shape_s{split_id[0]}_{split_id[1]}",
+                    _scoped_name(name_scope, f"{node_base_name}_shape_s{split_id[0]}_{split_id[1]}"),
                     reshaped.astype(np.int64),
                 )
 
     out = gs.Variable(
-        f"{node.outputs[0].name}_split_s{split_id[0]}_{split_id[1]}",
+        _scoped_name(name_scope, f"{node.outputs[0].name}_split_s{split_id[0]}_{split_id[1]}"),
         dtype=node.outputs[0].dtype,
         shape=out_shape,
     )
@@ -158,7 +165,7 @@ def _build_tiled_node(
         attrs = dict(node.attrs) if node.attrs else {}
 
     new_node = gs.Node(
-        name=f"{node_base_name}_split_s{split_id[0]}_{split_id[1]}",
+        name=_scoped_name(name_scope, f"{node_base_name}_split_s{split_id[0]}_{split_id[1]}"),
         op=node.op,
         inputs=new_inputs,
         outputs=[out],
@@ -167,7 +174,7 @@ def _build_tiled_node(
     return out, new_node
 
 
-def _build_group_concat(tiles, output_tensor, split_keys, tile_count):
+def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope=None):
     split_count_h, split_count_w = tile_count
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
@@ -184,10 +191,13 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count):
         for split_id_h in range(split_count_h):
             row_concat_inputs = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
             row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_concat_inputs[0].shape[2])
-            row_out = _make_output(f"{output_tensor.name}_row{split_id_h}", row_out_shape)
+            row_out = _make_output(
+                _scoped_name(name_scope, f"{output_tensor.name}_row{split_id_h}"),
+                row_out_shape,
+            )
             concat_nodes.append(
                 gs.Node(
-                    name=f"{output_tensor.name}_concat_row{split_id_h}",
+                    name=_scoped_name(name_scope, f"{output_tensor.name}_concat_row{split_id_h}"),
                     op="Concat",
                     inputs=row_concat_inputs,
                     outputs=[row_out],
@@ -199,7 +209,7 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count):
     out = _make_output(output_tensor.name, output_tensor.shape)
     concat_nodes.append(
         gs.Node(
-            name=f"{output_tensor.name}_concat",
+            name=_scoped_name(name_scope, f"{output_tensor.name}_concat"),
             op="Concat",
             inputs=final_concat_inputs,
             outputs=[out],
