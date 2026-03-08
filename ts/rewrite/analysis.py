@@ -120,7 +120,7 @@ def _collect_node_specs(group_nodes):
             _NodeSpec(
                 node=node,
                 local_index=local_index,
-                data_input_indices=tuple(data_input_indices),
+                data_input_indices=data_input_indices,
                 input_sources=input_sources,
             )
         )
@@ -209,13 +209,14 @@ def _analyze_group(orig_nodes, node_range):
 
     group_nodes = orig_nodes[a : b + 1]
     entry_tensors, boundary_output_specs, node_specs, node_spec_by_id = _collect_node_specs(group_nodes)
+    exit_tensor = group_nodes[-1].outputs[0]
 
     return _GroupInfo(
         node_range=node_range,
         nodes=group_nodes,
         entry_tensors=entry_tensors,
-        exit_tensor=group_nodes[-1].outputs[0],
-        boundary_output_specs=tuple(boundary_output_specs),
+        exit_tensor=exit_tensor,
+        boundary_output_specs=boundary_output_specs,
         node_specs=node_specs,
         node_spec_by_id=node_spec_by_id,
     )
