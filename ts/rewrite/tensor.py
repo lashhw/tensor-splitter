@@ -1,10 +1,6 @@
 import onnx_graphsurgeon as gs
 
 
-def _is_constant(tensor):
-    return isinstance(tensor, gs.Constant)
-
-
 def _tensor_height(tensor):
     return tensor.shape[2]
 

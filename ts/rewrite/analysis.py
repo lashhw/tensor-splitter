@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-from .tensor import _is_constant
+import onnx_graphsurgeon as gs
 
 SUPPORTED_GROUP_OPS = {"Conv", "Relu", "Add", "Concat", "AveragePool", "Reshape"}
 
@@ -144,8 +144,9 @@ def _collect_node_specs(group_nodes):
 
         data_input_indices = []
         input_sources = {}
+
         for input_index, tensor in enumerate(node.inputs):
-            if _is_constant(tensor):
+            if isinstance(tensor, gs.Constant):
                 continue
 
             data_input_indices.append(input_index)
