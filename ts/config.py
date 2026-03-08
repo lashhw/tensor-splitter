@@ -68,8 +68,6 @@ def parse_config(path):
 
     normalized_groups = []
     for entry in raw:
-        assert isinstance(entry, dict)
-        assert "node_range" in entry and "tile_count" in entry and "execution_order" in entry
         normalized_group = _GroupConfig(
             node_range=_to_tuple_pair(entry["node_range"]),
             tile_count=_to_tuple_pair(entry["tile_count"]),
