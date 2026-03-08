@@ -8,7 +8,6 @@ SUPPORTED_NON_CONV_OPS = {
     "Add",
     "Concat",
     "AveragePool",
-    "Constant",
     "Reshape",
     "Transpose",
 }
@@ -55,21 +54,14 @@ def _ensure_toposorted(nodes):
 
 
 def _ensure_supported_op(node):
-    assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op {node.op} for tiled rewrite"
+    assert node.op in SUPPORTED_GROUP_OPS
     if node.op == "Concat":
-        axis = node.attrs.get("axis")
-        assert axis is not None, f"Concat node {node.name} must define axis"
-        assert axis == 1, f"Concat axis must be 1 for tiled rewrite; got {axis}"
+        axis = node.attrs["axis"]
+        assert axis == 1
     if node.op == "Transpose":
-        perm = node.attrs.get("perm")
-        assert isinstance(perm, list) and len(perm) >= 2, (
-            f"Transpose node {node.name} must define perm with rank >= 2"
-        )
-        # Keep H/W as the trailing axes so tile ranges remain spatially aligned.
+        perm = node.attrs["perm"]
         rank = len(perm)
-        assert perm[-2] == rank - 2 and perm[-1] == rank - 1, (
-            f"Transpose node {node.name} perm must keep trailing H/W axes unchanged; got {perm}"
-        )
+        assert perm[-2] == rank - 2 and perm[-1] == rank - 1
 
 
 def _collect_node_specs(group_nodes):
