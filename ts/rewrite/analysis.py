@@ -60,13 +60,6 @@ def _build_adjacency(node_count, internal_edges):
     return in_edges, out_edges
 
 
-def _record_entry_tensor(entry_tensor, tensor):
-    if entry_tensor is None:
-        return tensor
-    assert tensor is entry_tensor, "group must have exactly one external entry tensor"
-    return entry_tensor
-
-
 def _reachable_indices(seed_index, edges):
     visited = set()
     stack = [seed_index]
@@ -158,7 +151,8 @@ def _collect_node_specs(group_nodes):
                 producer_local_index = local_index_by_id.get(id(producers[0]))
 
             if producer_local_index is None:
-                entry_tensor = _record_entry_tensor(entry_tensor, tensor)
+                assert entry_tensor is None
+                entry_tensor = tensor
                 input_sources[input_index] = _InputSource(
                     kind="entry",
                     producer_local_index=None,
