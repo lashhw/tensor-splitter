@@ -13,7 +13,7 @@ def _to_int(value):
 
 
 def _to_tuple_pair(value):
-    assert isinstance(value, (list, tuple)) and len(value) == 2
+    assert type(value) is list and len(value) == 2
     return _to_int(value[0]), _to_int(value[1])
 
 
@@ -21,11 +21,11 @@ def _normalize_execution_order(execution_order):
     normalized = []
 
     for entry in execution_order:
-        assert isinstance(entry, (list, tuple)) and len(entry) == 2
+        assert type(entry) is list and len(entry) == 2
         node_index = _to_int(entry[0])
         split_id = entry[1]
 
-        assert isinstance(split_id, (list, tuple)) and len(split_id) == 2
+        assert type(split_id) is list and len(split_id) == 2
         split_id_h = _to_int(split_id[0])
         split_id_w = _to_int(split_id[1])
 
@@ -64,7 +64,7 @@ def parse_config(path):
     with open(path, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    assert isinstance(raw, list)
+    assert type(raw) is list
 
     normalized_groups = []
     for entry in raw:
