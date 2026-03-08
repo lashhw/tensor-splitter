@@ -86,17 +86,6 @@ def _collect_node_specs(group_nodes):
             producers = list(tensor.inputs)
             assert len(producers) <= 1
 
-            if producers and producers[0].op == "Constant":
-                producer_local_index = local_index_by_id.get(id(producers[0]))
-                if producer_local_index is not None:
-                    input_sources[input_index] = _InputSource(
-                        input_index=input_index,
-                        kind="node",
-                        producer_local_index=producer_local_index,
-                        entry_key=None,
-                    )
-                continue
-
             data_input_indices.append(input_index)
             producer_local_index = None
             if producers:
