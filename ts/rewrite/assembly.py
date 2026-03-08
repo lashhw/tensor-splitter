@@ -8,11 +8,10 @@ def _group_name_scope(group_info):
     return f"g{start}_{end}"
 
 
-def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles_by_key, source, split_pos):
+def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles, source, split_pos):
     if source.kind == "entry":
-        entry_tiles = entry_tiles_by_key[source.entry_key]
         tile = entry_tiles[split_pos]
-        produced_range = range_plan.entry_ranges_by_key[source.entry_key][split_pos]
+        produced_range = range_plan.entry_ranges[split_pos]
     else:
         producer_tiles = tiles_by_local_index[source.producer_local_index]
         tile = producer_tiles[split_pos]
@@ -84,17 +83,11 @@ def _build_group(group_info):
     group_start, _ = group_info.node_range
     name_scope = _group_name_scope(group_info)
 
-    entry_tiles_by_key = {}
-    entry_slice_nodes = []
-    for entry_key, entry_tensor in group_info.entry_tensors.items():
-        entry_ranges = range_plan.entry_ranges_by_key[entry_key]
-        entry_tiles, entry_nodes = _build_entry_tiles(
-            entry_tensor,
-            entry_ranges,
-            name_scope=name_scope,
-        )
-        entry_tiles_by_key[entry_key] = entry_tiles
-        entry_slice_nodes.extend(entry_nodes)
+    entry_tiles, entry_slice_nodes = _build_entry_tiles(
+        group_info.entry_tensor,
+        range_plan.entry_ranges,
+        name_scope=name_scope,
+    )
 
     tiles_by_local_index = [[None for _ in range(len(range_plan.split_keys))] for _ in group_info.nodes]
     rewritten_nodes = []
@@ -116,7 +109,7 @@ def _build_group(group_info):
             source_tile, produced_range = _get_tile_from_source(
                 range_plan=range_plan,
                 tiles_by_local_index=tiles_by_local_index,
-                entry_tiles_by_key=entry_tiles_by_key,
+                entry_tiles=entry_tiles,
                 source=source,
                 split_pos=split_pos,
             )

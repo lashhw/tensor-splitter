@@ -7,7 +7,7 @@ _RangePlan = namedtuple(
     "_RangePlan",
     [
         "split_keys",
-        "entry_ranges_by_key",
+        "entry_ranges",
         "output_ranges_by_node",
         "input_ranges_by_node",
         "spatial_slices_by_node",
@@ -127,10 +127,7 @@ def _plan_node_ranges(group_info):
     output_ranges_by_node = [[None for _ in range(split_count)] for _ in range(node_count)]
     input_ranges_by_node = [{} for _ in range(node_count)]
     spatial_slices_by_node = [None for _ in range(node_count)]
-    entry_ranges_by_key = {
-        entry_key: [None for _ in range(split_count)]
-        for entry_key in group_info.entry_tensors
-    }
+    entry_ranges = [None for _ in range(split_count)]
     stitch_ranges_by_local_index = {}
 
     stitch_targets = [(node_count - 1, group_info.exit_tensor)] + [
@@ -175,22 +172,19 @@ def _plan_node_ranges(group_info):
         for input_index, demanded_ranges in demanded_ranges_by_input.items():
             source = node_spec.input_sources[input_index]
             if source.kind == "entry":
-                entry_ranges = entry_ranges_by_key[source.entry_key]
                 _merge_range_list(entry_ranges, demanded_ranges)
             else:
                 producer_out_ranges = output_ranges_by_node[source.producer_local_index]
                 _merge_range_list(producer_out_ranges, demanded_ranges)
 
-    for entry_key, entry_ranges in entry_ranges_by_key.items():
-        entry_tensor = group_info.entry_tensors[entry_key]
-        _require_fully_initialized(entry_ranges, f"group entry tensor {entry_tensor.name}")
+    _require_fully_initialized(entry_ranges, f"group entry tensor {group_info.entry_tensor.name}")
 
     for local_index, node_spec in enumerate(group_info.node_specs):
         _require_fully_initialized(output_ranges_by_node[local_index], f"node {node_spec.node.name} output")
 
     return _RangePlan(
         split_keys=split_keys,
-        entry_ranges_by_key=entry_ranges_by_key,
+        entry_ranges=entry_ranges,
         output_ranges_by_node=output_ranges_by_node,
         input_ranges_by_node=input_ranges_by_node,
         spatial_slices_by_node=spatial_slices_by_node,

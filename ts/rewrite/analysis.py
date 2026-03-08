@@ -6,7 +6,7 @@ SUPPORTED_GROUP_OPS = {"Conv", "Relu", "Add", "Concat", "AveragePool", "Reshape"
 
 _InputSource = namedtuple(
     "_InputSource",
-    ["kind", "producer_local_index", "entry_key"],
+    ["kind", "producer_local_index"],
 )
 
 _NodeSpec = namedtuple(
@@ -26,7 +26,7 @@ _GroupInfo = namedtuple(
         "tile_count",
         "execution_order",
         "nodes",
-        "entry_tensors",
+        "entry_tensor",
         "exit_tensor",
         "boundary_output_specs",
         "node_specs",
@@ -60,7 +60,14 @@ def _build_adjacency(node_count, internal_edges):
     return in_edges, out_edges
 
 
-def _collect_input_sources(local_index, node, local_index_by_id, entry_tensors, internal_edges):
+def _record_entry_tensor(entry_tensor, tensor):
+    if entry_tensor is None:
+        return tensor
+    assert tensor is entry_tensor, "group must have exactly one external entry tensor"
+    return entry_tensor
+
+
+def _collect_input_sources(local_index, node, local_index_by_id, entry_tensor, internal_edges):
     data_input_indices = []
     input_sources = {}
 
@@ -77,24 +84,21 @@ def _collect_input_sources(local_index, node, local_index_by_id, entry_tensors, 
             producer_local_index = local_index_by_id.get(id(producers[0]))
 
         if producer_local_index is None:
-            entry_key = id(tensor)
-            entry_tensors.setdefault(entry_key, tensor)
+            entry_tensor = _record_entry_tensor(entry_tensor, tensor)
             input_sources[input_index] = _InputSource(
                 kind="entry",
                 producer_local_index=None,
-                entry_key=entry_key,
             )
             continue
 
         input_sources[input_index] = _InputSource(
             kind="node",
             producer_local_index=producer_local_index,
-            entry_key=None,
         )
         internal_edges.append((producer_local_index, local_index))
 
     assert data_input_indices, f"node {node.name} must have at least one data input"
-    return data_input_indices, input_sources
+    return data_input_indices, input_sources, entry_tensor
 
 
 def _reachable_indices(seed_index, edges):
@@ -163,7 +167,7 @@ def _collect_boundary_outputs(group_nodes, node_specs, sink_local_index):
 
 def _collect_node_specs(group_nodes):
     local_index_by_id = {id(node): local_index for local_index, node in enumerate(group_nodes)}
-    entry_tensors = {}
+    entry_tensor = None
     internal_edges = []
     node_specs = []
 
@@ -171,11 +175,11 @@ def _collect_node_specs(group_nodes):
         _ensure_supported_op(node)
         assert len(node.outputs) == 1, f"node {node.name} must have exactly one output"
 
-        data_input_indices, input_sources = _collect_input_sources(
+        data_input_indices, input_sources, entry_tensor = _collect_input_sources(
             local_index=local_index,
             node=node,
             local_index_by_id=local_index_by_id,
-            entry_tensors=entry_tensors,
+            entry_tensor=entry_tensor,
             internal_edges=internal_edges,
         )
 
@@ -188,12 +192,12 @@ def _collect_node_specs(group_nodes):
             )
         )
 
-    assert entry_tensors, "group must have at least one external entry tensor"
+    assert entry_tensor is not None, "group must have exactly one external entry tensor"
 
     in_edges, out_edges = _build_adjacency(len(group_nodes), internal_edges)
     sink_local_index = _validate_group_topology(node_specs, in_edges, out_edges)
     boundary_output_specs = _collect_boundary_outputs(group_nodes, node_specs, sink_local_index)
-    return entry_tensors, boundary_output_specs, node_specs
+    return entry_tensor, boundary_output_specs, node_specs
 
 
 def _analyze_group(orig_nodes, group_cfg):
@@ -203,7 +207,7 @@ def _analyze_group(orig_nodes, group_cfg):
     assert 0 <= start <= end < len(orig_nodes), f"invalid node_range {group_cfg.node_range}"
 
     group_nodes = orig_nodes[start : end + 1]
-    entry_tensors, boundary_output_specs, node_specs = _collect_node_specs(group_nodes)
+    entry_tensor, boundary_output_specs, node_specs = _collect_node_specs(group_nodes)
     exit_tensor = group_nodes[-1].outputs[0]
 
     return _GroupInfo(
@@ -211,7 +215,7 @@ def _analyze_group(orig_nodes, group_cfg):
         tile_count=group_cfg.tile_count,
         execution_order=group_cfg.execution_order,
         nodes=group_nodes,
-        entry_tensors=entry_tensors,
+        entry_tensor=entry_tensor,
         exit_tensor=exit_tensor,
         boundary_output_specs=boundary_output_specs,
         node_specs=node_specs,
