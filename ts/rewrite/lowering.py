@@ -30,16 +30,14 @@ def _infer_spatial_axis(shape):
     return len(shape) - 2
 
 
-def _shape_with_hw(shape, h_size, w_size, axis=None):
-    if axis is None:
-        axis = _infer_spatial_axis(shape)
+def _shape_with_hw(shape, h_size, w_size):
+    axis = _infer_spatial_axis(shape)
     out_shape = _shape_with_dim_size(shape, axis, h_size)
     return _shape_with_dim_size(out_shape, axis + 1, w_size)
 
 
-def _build_entry_tiles(entry_tensor, entry_ranges, axis=None):
-    if axis is None:
-        axis = _infer_spatial_axis(entry_tensor.shape)
+def _build_entry_tiles(entry_tensor, entry_ranges):
+    axis = _infer_spatial_axis(entry_tensor.shape)
     tiles = []
     slice_nodes = []
     for tile_id, ((start_h, end_h), (start_w, end_w)) in enumerate(entry_ranges):
@@ -51,7 +49,6 @@ def _build_entry_tiles(entry_tensor, entry_ranges, axis=None):
             entry_tensor.shape,
             h_size=end_h - start_h,
             w_size=end_w - start_w,
-            axis=axis,
         )
 
         base_name = f"{entry_tensor.name}_slice{tile_id}"
@@ -77,9 +74,8 @@ def _build_entry_tiles(entry_tensor, entry_ranges, axis=None):
     return tiles, slice_nodes
 
 
-def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, axis=None):
-    if axis is None:
-        axis = _infer_spatial_axis(tile.shape)
+def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix):
+    axis = _infer_spatial_axis(tile.shape)
 
     (prod_y0, _), (prod_x0, _) = produced_range
     (req_y0, req_y1), (req_x0, req_x1) = required_range
@@ -102,7 +98,7 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
     out = gs.Variable(
         f"{base_name}_out",
         dtype=tile.dtype,
-        shape=_shape_with_hw(tile.shape, h_size=req_y1 - req_y0, w_size=req_x1 - req_x0, axis=axis),
+        shape=_shape_with_hw(tile.shape, h_size=req_y1 - req_y0, w_size=req_x1 - req_x0),
     )
     node = gs.Node(
         name=base_name,
@@ -171,13 +167,12 @@ def _build_tiled_node(
     return out, new_node
 
 
-def _build_group_concat(tiles, axis, output_tensor, split_keys, tile_count):
+def _build_group_concat(tiles, output_tensor, split_keys, tile_count):
     split_count_h, split_count_w = tile_count
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
     tile_by_key = {key: tile for key, tile in zip(split_keys, tiles)}
     concat_nodes = []
-    output_shape = list(output_tensor.shape)
 
     def _make_output(name, shape):
         return gs.Variable(name, dtype=output_tensor.dtype, shape=shape)
@@ -201,14 +196,14 @@ def _build_group_concat(tiles, axis, output_tensor, split_keys, tile_count):
             )
             final_concat_inputs.append(row_out)
 
-    out = _make_output(output_tensor.name, output_shape)
+    out = _make_output(output_tensor.name, output_tensor.shape)
     concat_nodes.append(
         gs.Node(
             name=f"{output_tensor.name}_concat",
             op="Concat",
             inputs=final_concat_inputs,
             outputs=[out],
-            attrs={"axis": axis},
+            attrs={"axis": 2},
         )
     )
     return out, concat_nodes

@@ -16,13 +16,16 @@ _RangePlan = namedtuple(
 )
 
 
-def _partition_ranges(total, tile_count):
-    base = total // tile_count
-    rem = total % tile_count
+_IDENTITY_RANGE_OPS = {"Relu", "Add", "Concat", "Reshape"}
+
+
+def _partition_ranges(total, part_count):
+    base = total // part_count
+    rem = total % part_count
     ranges = []
     start = 0
-    for i in range(tile_count):
-        size = base + (1 if i < rem else 0)
+    for part_index in range(part_count):
+        size = base + (1 if part_index < rem else 0)
         end = start + size
         ranges.append((start, end))
         start = end
@@ -130,11 +133,10 @@ def _plan_node_ranges(group_info):
     }
     stitch_ranges_by_local_index = {}
 
-    stitch_targets = [(node_count - 1, group_info.exit_tensor)]
-    stitch_targets.extend(
+    stitch_targets = [(node_count - 1, group_info.exit_tensor)] + [
         (spec.local_index, spec.output_tensor)
         for spec in group_info.boundary_output_specs
-    )
+    ]
 
     for local_index, output_tensor in stitch_targets:
         if local_index in stitch_ranges_by_local_index:
@@ -160,7 +162,7 @@ def _plan_node_ranges(group_info):
         elif node.op == "AveragePool":
             demanded_ranges_by_input, pool_slices = _propagate_pool_input_ranges(node, node_spec, out_ranges)
             spatial_slices_by_node[local_index] = pool_slices
-        elif node.op in {"Relu", "BatchNormalization", "Add", "Concat", "Reshape", "Transpose"}:
+        elif node.op in _IDENTITY_RANGE_OPS:
             demanded_ranges_by_input = _propagate_identity_input_ranges(
                 out_ranges,
                 node_spec.data_input_indices,
