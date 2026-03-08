@@ -149,53 +149,50 @@ def _collect_node_specs(group_nodes):
         assert len(join_local_indices) == 1, "group may have at most one join node"
         assert join_local_indices[0] == sink_local_index, "join node must be the sink node"
 
-    reachable_from_source = set()
+    reachable_from_source_indices = set()
     stack = [source_local_index]
     while stack:
         cur = stack.pop()
-        if cur in reachable_from_source:
+        if cur in reachable_from_source_indices:
             continue
-        reachable_from_source.add(cur)
+        reachable_from_source_indices.add(cur)
         stack.extend(out_edges[cur])
 
-    can_reach_sink = set()
+    reachable_to_sink_indices = set()
     stack = [sink_local_index]
     while stack:
         cur = stack.pop()
-        if cur in can_reach_sink:
+        if cur in reachable_to_sink_indices:
             continue
-        can_reach_sink.add(cur)
+        reachable_to_sink_indices.add(cur)
         stack.extend(in_edges[cur])
 
     for spec in node_specs:
-        assert spec.local_index in reachable_from_source, (
+        assert spec.local_index in reachable_from_source_indices, (
             f"node {spec.node.name} is not reachable from group source node"
         )
-        assert spec.local_index in can_reach_sink, (
+        assert spec.local_index in reachable_to_sink_indices, (
             f"node {spec.node.name} does not feed the group sink node"
         )
 
     sink_node = group_nodes[sink_local_index]
     group_node_ids = {id(node) for node in group_nodes}
     boundary_output_specs = []
+
     for spec in node_specs:
-        out_tensor = spec.node.outputs[0]
-        external_consumers = []
-        for consumer in out_tensor.outputs:
-            if id(consumer) in group_node_ids:
-                continue
-
-            external_consumers.append(consumer)
-
-        if not external_consumers or id(spec.node) == id(sink_node):
+        if id(spec.node) == id(sink_node):
             continue
 
-        boundary_output_specs.append(
-            _BoundaryOutputSpec(
-                local_index=spec.local_index,
-                output_tensor=out_tensor,
+        out_tensor = spec.node.outputs[0]
+        has_external_consumer = any(id(consumer) not in group_node_ids for consumer in out_tensor.outputs)
+
+        if has_external_consumer:
+            boundary_output_specs.append(
+                _BoundaryOutputSpec(
+                    local_index=spec.local_index,
+                    output_tensor=out_tensor,
+                )
             )
-        )
 
     node_spec_by_id = {id(spec.node): spec for spec in node_specs}
     return external_tensors, boundary_output_specs, node_specs, node_spec_by_id
