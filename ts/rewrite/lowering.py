@@ -20,16 +20,6 @@ def _make_constant(name, values):
 def _resolve_constant_input_values(tensor):
     if isinstance(tensor, gs.Constant):
         return np.asarray(tensor.values, dtype=np.int64).reshape(-1)
-
-    producers = list(tensor.inputs)
-    if len(producers) != 1 or producers[0].op != "Constant":
-        return None
-
-    value_attr = producers[0].attrs.get("value")
-    if isinstance(value_attr, gs.Constant):
-        return np.asarray(value_attr.values, dtype=np.int64).reshape(-1)
-    if isinstance(value_attr, np.ndarray):
-        return np.asarray(value_attr, dtype=np.int64).reshape(-1)
     return None
 
 
@@ -136,12 +126,9 @@ def _build_tiled_node(
     for input_index, tensor in input_tensors_by_index.items():
         new_inputs[input_index] = tensor
 
-    if node.op == "Constant":
-        out_shape = list(node.outputs[0].shape) if node.outputs[0].shape is not None else None
-    else:
-        assert out_range is not None, f"out_range is required when lowering op {node.op}"
-        (y0, y1), (x0, x1) = out_range
-        out_shape = _shape_with_hw(node.outputs[0].shape, h_size=y1 - y0, w_size=x1 - x0)
+    assert out_range is not None, f"out_range is required when lowering op {node.op}"
+    (y0, y1), (x0, x1) = out_range
+    out_shape = _shape_with_hw(node.outputs[0].shape, h_size=y1 - y0, w_size=x1 - x0)
 
     if node.op == "Reshape" and len(new_inputs) >= 2:
         shape_values = _resolve_constant_input_values(node.inputs[1])

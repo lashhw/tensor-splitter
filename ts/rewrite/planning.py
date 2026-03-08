@@ -151,10 +151,6 @@ def _plan_node_ranges(group_info, tile_count):
         node_spec = group_info.node_specs[local_index]
         node = node_spec.node
 
-        if node.op == "Constant":
-            input_ranges_by_node[local_index] = {}
-            continue
-
         out_ranges = output_ranges_by_node[local_index]
         _require_fully_initialized(out_ranges, f"node {node.name} output")
 
@@ -188,8 +184,6 @@ def _plan_node_ranges(group_info, tile_count):
         _require_fully_initialized(entry_ranges, f"group entry tensor {entry_tensor.name}")
 
     for local_index, node_spec in enumerate(group_info.node_specs):
-        if node_spec.node.op == "Constant":
-            continue
         _require_fully_initialized(output_ranges_by_node[local_index], f"node {node_spec.node.name} output")
 
     return _RangePlan(

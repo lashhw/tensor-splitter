@@ -133,9 +133,7 @@ def _build_group(group_info, group_cfg):
                 scheduled_nodes=scheduled_nodes,
             )
 
-        out_range = None
-        if node.op != "Constant":
-            out_range = range_plan.output_ranges_by_node[local_index][split_pos]
+        out_range = range_plan.output_ranges_by_node[local_index][split_pos]
         spatial_slice = None
         if node.op in {"Conv", "AveragePool"}:
             spatial_slice = range_plan.spatial_slices_by_node[local_index][split_pos]
