@@ -163,13 +163,12 @@ def _collect_node_specs(group_nodes):
                     kind="entry",
                     producer_local_index=None,
                 )
-                continue
-
-            input_sources[input_index] = _InputSource(
-                kind="node",
-                producer_local_index=producer_local_index,
-            )
-            internal_edges.append((producer_local_index, local_index))
+            else:
+                input_sources[input_index] = _InputSource(
+                    kind="node",
+                    producer_local_index=producer_local_index,
+                )
+                internal_edges.append((producer_local_index, local_index))
 
         assert data_input_indices, f"node {node.name} must have at least one data input"
 
