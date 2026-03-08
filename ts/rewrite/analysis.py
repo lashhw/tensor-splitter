@@ -252,19 +252,16 @@ def _collect_node_specs(group_nodes):
 
 def _analyze_group(orig_nodes, node_range):
     a, b = node_range
-    assert not (a < 0 or b >= len(orig_nodes) or b < a), (
-        f"invalid group node_range {node_range} for graph with {len(orig_nodes)} nodes"
-    )
+    assert a >= 0 and b < len(orig_nodes) and a <= b
 
     group_nodes = orig_nodes[a : b + 1]
-    exit_tensor = group_nodes[-1].outputs[0]
     entry_tensors, boundary_output_specs, node_specs, node_spec_by_id = _collect_node_specs(group_nodes)
 
     return _GroupInfo(
         node_range=node_range,
         nodes=group_nodes,
         entry_tensors=entry_tensors,
-        exit_tensor=exit_tensor,
+        exit_tensor=group_nodes[-1].outputs[0],
         boundary_output_specs=tuple(boundary_output_specs),
         node_specs=node_specs,
         node_spec_by_id=node_spec_by_id,
