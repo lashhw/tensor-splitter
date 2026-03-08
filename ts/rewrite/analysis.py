@@ -66,9 +66,10 @@ def _ensure_supported_op(node):
 
 def _collect_node_specs(group_nodes):
     local_index_by_id = {id(node): local_index for local_index, node in enumerate(group_nodes)}
-    node_specs = []
+
     external_tensors = {}
     internal_edges = []
+    node_specs = []
     join_local_indices = []
 
     for local_index, node in enumerate(group_nodes):
@@ -82,11 +83,11 @@ def _collect_node_specs(group_nodes):
         for input_index, tensor in enumerate(node.inputs):
             if _is_constant(tensor):
                 continue
+            data_input_indices.append(input_index)
 
             producers = list(tensor.inputs)
             assert len(producers) <= 1
 
-            data_input_indices.append(input_index)
             producer_local_index = None
             if producers:
                 producer_local_index = local_index_by_id.get(id(producers[0]))
@@ -110,12 +111,7 @@ def _collect_node_specs(group_nodes):
                 internal_edges.append((producer_local_index, local_index))
                 internal_input_count += 1
 
-        if node.op == "Constant":
-            assert not data_input_indices, (
-                f"Constant node {node.name} must not have non-constant data inputs"
-            )
-        else:
-            assert data_input_indices, f"node {node.name} must have at least one non-constant data input"
+        assert data_input_indices, f"node {node.name} must have at least one data input"
 
         if internal_input_count >= 2:
             join_local_indices.append(local_index)
@@ -129,7 +125,7 @@ def _collect_node_specs(group_nodes):
             )
         )
 
-    assert external_tensors, "group must have at least one external non-constant entry tensor"
+    assert external_tensors, "group must have at least one external entry tensor"
 
     in_degree = [0] * len(group_nodes)
     out_edges = [[] for _ in group_nodes]
@@ -143,32 +139,21 @@ def _collect_node_specs(group_nodes):
     assert flow_local_indices, "group must contain at least one dataflow node"
 
     source_local_indices = [idx for idx in flow_local_indices if in_degree[idx] == 0]
-    assert len(source_local_indices) == 1, (
-        "group must have a single source node for tiled rewrite"
-    )
+    assert len(source_local_indices) == 1, "group must have exactly one source node"
 
-    sink_local_indices = [
-        idx for idx in flow_local_indices if not any(dst in flow_local_indices for dst in out_edges[idx])
-    ]
-    assert len(sink_local_indices) == 1, (
-        "group must have exactly one sink node in internal dataflow"
-    )
+    sink_local_indices = [idx for idx in flow_local_indices if not any(dst in flow_local_indices for dst in out_edges[idx])]
+    assert len(sink_local_indices) == 1, "group must have exactly one sink node"
+
     sink_local_index = sink_local_indices[0]
-    assert sink_local_index == len(group_nodes) - 1, (
-        "group sink node must be the last node in node_range"
-    )
+    assert sink_local_index == len(group_nodes) - 1, "group sink node must be the last node in node_range"
 
     join_local_indices = [idx for idx in join_local_indices if idx in flow_local_indices]
     if not join_local_indices:
         join_local_index = sink_local_index
     else:
-        assert len(join_local_indices) == 1, (
-            "group may have at most one join node with multiple internal data inputs"
-        )
+        assert len(join_local_indices) == 1, "group may have at most one join node with multiple internal data inputs"
         join_local_index = join_local_indices[0]
-        assert join_local_index == len(group_nodes) - 1, (
-            "join node must be the last node in node_range"
-        )
+        assert join_local_index == len(group_nodes) - 1, "join node must be the last node in node_range"
 
     source_local_index = source_local_indices[0]
     reachable_from_source = set()
