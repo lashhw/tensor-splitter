@@ -67,40 +67,6 @@ def _record_entry_tensor(entry_tensor, tensor):
     return entry_tensor
 
 
-def _collect_input_sources(local_index, node, local_index_by_id, entry_tensor, internal_edges):
-    data_input_indices = []
-    input_sources = {}
-
-    for input_index, tensor in enumerate(node.inputs):
-        if _is_constant(tensor):
-            continue
-
-        data_input_indices.append(input_index)
-        producers = list(tensor.inputs)
-        assert len(producers) <= 1, f"tensor {tensor.name} must have at most one producer"
-
-        producer_local_index = None
-        if producers:
-            producer_local_index = local_index_by_id.get(id(producers[0]))
-
-        if producer_local_index is None:
-            entry_tensor = _record_entry_tensor(entry_tensor, tensor)
-            input_sources[input_index] = _InputSource(
-                kind="entry",
-                producer_local_index=None,
-            )
-            continue
-
-        input_sources[input_index] = _InputSource(
-            kind="node",
-            producer_local_index=producer_local_index,
-        )
-        internal_edges.append((producer_local_index, local_index))
-
-    assert data_input_indices, f"node {node.name} must have at least one data input"
-    return data_input_indices, input_sources, entry_tensor
-
-
 def _reachable_indices(seed_index, edges):
     visited = set()
     stack = [seed_index]
@@ -167,6 +133,7 @@ def _collect_boundary_outputs(group_nodes, node_specs, sink_local_index):
 
 def _collect_node_specs(group_nodes):
     local_index_by_id = {id(node): local_index for local_index, node in enumerate(group_nodes)}
+
     entry_tensor = None
     internal_edges = []
     node_specs = []
@@ -175,13 +142,35 @@ def _collect_node_specs(group_nodes):
         _ensure_supported_op(node)
         assert len(node.outputs) == 1, f"node {node.name} must have exactly one output"
 
-        data_input_indices, input_sources, entry_tensor = _collect_input_sources(
-            local_index=local_index,
-            node=node,
-            local_index_by_id=local_index_by_id,
-            entry_tensor=entry_tensor,
-            internal_edges=internal_edges,
-        )
+        data_input_indices = []
+        input_sources = {}
+        for input_index, tensor in enumerate(node.inputs):
+            if _is_constant(tensor):
+                continue
+
+            data_input_indices.append(input_index)
+            producers = list(tensor.inputs)
+            assert len(producers) <= 1, f"tensor {tensor.name} must have at most one producer"
+
+            producer_local_index = None
+            if producers:
+                producer_local_index = local_index_by_id.get(id(producers[0]))
+
+            if producer_local_index is None:
+                entry_tensor = _record_entry_tensor(entry_tensor, tensor)
+                input_sources[input_index] = _InputSource(
+                    kind="entry",
+                    producer_local_index=None,
+                )
+                continue
+
+            input_sources[input_index] = _InputSource(
+                kind="node",
+                producer_local_index=producer_local_index,
+            )
+            internal_edges.append((producer_local_index, local_index))
+
+        assert data_input_indices, f"node {node.name} must have at least one data input"
 
         node_specs.append(
             _NodeSpec(
