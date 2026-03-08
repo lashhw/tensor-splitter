@@ -129,21 +129,21 @@ def _collect_node_specs(group_nodes):
 
     assert external_tensors, "group must have at least one external entry tensor"
 
-    in_degree = [0] * len(group_nodes)
     out_edges = [[] for _ in group_nodes]
     in_edges = [[] for _ in group_nodes]
     for src, dst in internal_edges:
-        in_degree[dst] += 1
         out_edges[src].append(dst)
         in_edges[dst].append(src)
 
-    source_local_indices = [idx for idx, deg in enumerate(in_degree) if deg == 0]
+    source_local_indices = [idx for idx, incoming in enumerate(in_edges) if not incoming]
     assert len(source_local_indices) == 1, "group must have exactly one source node"
 
     sink_local_indices = [idx for idx, outgoing in enumerate(out_edges) if not outgoing]
     assert len(sink_local_indices) == 1, "group must have exactly one sink node"
 
     source_local_index = source_local_indices[0]
+    assert source_local_index == 0, "group source node must be the first node in node_range"
+
     sink_local_index = sink_local_indices[0]
     assert sink_local_index == len(group_nodes) - 1, "group sink node must be the last node in node_range"
 
