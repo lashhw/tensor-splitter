@@ -60,9 +60,9 @@ def _build_adjacency(node_count, internal_edges):
     return in_edges, out_edges
 
 
-def _reachable_indices(seed_index, edges):
+def _reachable_indices(seed_indices, edges):
     visited = set()
-    stack = [seed_index]
+    stack = list(seed_indices)
     while stack:
         current = stack.pop()
         if current in visited:
@@ -74,9 +74,8 @@ def _reachable_indices(seed_index, edges):
 
 def _validate_group_topology(node_specs, in_edges, out_edges):
     source_local_indices = [index for index, incoming in enumerate(in_edges) if not incoming]
-    assert len(source_local_indices) == 1, "group must have exactly one source node"
-    source_local_index = source_local_indices[0]
-    assert source_local_index == 0, "group source node must be the first node in node_range"
+    assert source_local_indices, "group must have at least one source node"
+    assert source_local_indices[0] == 0, "first group source node must be the first node in node_range"
 
     sink_local_indices = [index for index, outgoing in enumerate(out_edges) if not outgoing]
     assert len(sink_local_indices) == 1, "group must have exactly one sink node"
@@ -88,10 +87,10 @@ def _validate_group_topology(node_specs, in_edges, out_edges):
         assert len(join_local_indices) == 1, "group may have at most one join node"
         assert join_local_indices[0] == sink_local_index, "join node must be the sink node"
 
-    reachable_from_source = _reachable_indices(source_local_index, out_edges)
-    reachable_to_sink = _reachable_indices(sink_local_index, in_edges)
+    reachable_from_sources = _reachable_indices(source_local_indices, out_edges)
+    reachable_to_sink = _reachable_indices([sink_local_index], in_edges)
     for spec in node_specs:
-        assert spec.local_index in reachable_from_source, f"node {spec.node.name} is not reachable from group source node"
+        assert spec.local_index in reachable_from_sources, f"node {spec.node.name} is not reachable from any group source node"
         assert spec.local_index in reachable_to_sink, f"node {spec.node.name} does not feed the group sink node"
 
     return sink_local_index
@@ -145,8 +144,10 @@ def _collect_node_specs(group_nodes):
                 producer_local_index = local_index_by_id.get(id(producers[0]))
 
             if producer_local_index is None:
-                assert entry_tensor is None
-                entry_tensor = tensor
+                if entry_tensor is None:
+                    entry_tensor = tensor
+                else:
+                    assert tensor is entry_tensor, "group must have exactly one external entry tensor"
                 input_sources[input_index] = _InputSource(
                     kind="entry",
                     producer_local_index=None,
