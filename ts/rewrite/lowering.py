@@ -4,6 +4,8 @@ import onnx_graphsurgeon as gs
 from .conv import _avg_pool_attrs_with_hw_pad, _conv_attrs_with_hw_pad
 from .tensor import _shape_with_dim_size
 
+_MAX_CONCAT_INPUTS = 10
+
 
 def _node_base_name(node):
     if node.name:
@@ -40,6 +42,61 @@ def _shape_with_hw(shape, h_size, w_size):
     axis = _infer_spatial_axis(shape)
     out_shape = _shape_with_dim_size(shape, axis, h_size)
     return _shape_with_dim_size(out_shape, axis + 1, w_size)
+
+
+def _concat_axis_size(inputs, axis):
+    axis_sizes = [tensor.shape[axis] for tensor in inputs]
+    if any(size is None for size in axis_sizes):
+        return None
+    return sum(axis_sizes)
+
+
+def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, output_dtype):
+    """Build a concat tree so each emitted Concat stays within the engine limit."""
+    assert inputs, "Concat requires at least one input"
+
+    def _make_output(name, shape):
+        return gs.Variable(name, dtype=output_dtype, shape=shape)
+
+    concat_nodes = []
+    stage_inputs = list(inputs)
+    stage_index = 0
+
+    while len(stage_inputs) > _MAX_CONCAT_INPUTS:
+        next_stage_inputs = []
+        for group_index, start in enumerate(range(0, len(stage_inputs), _MAX_CONCAT_INPUTS)):
+            group_inputs = stage_inputs[start : start + _MAX_CONCAT_INPUTS]
+            group_shape = _shape_with_dim_size(
+                output_shape,
+                axis,
+                _concat_axis_size(group_inputs, axis),
+            )
+            group_name = f"{node_name}_s{stage_index}_g{group_index}"
+            group_out = _make_output(f"{group_name}_out", group_shape)
+            concat_nodes.append(
+                gs.Node(
+                    name=group_name,
+                    op="Concat",
+                    inputs=group_inputs,
+                    outputs=[group_out],
+                    attrs={"axis": axis},
+                )
+            )
+            next_stage_inputs.append(group_out)
+        stage_inputs = next_stage_inputs
+        stage_index += 1
+
+    out = _make_output(output_name, output_shape)
+    concat_nodes.append(
+        gs.Node(
+            name=node_name,
+            op="Concat",
+            inputs=stage_inputs,
+            outputs=[out],
+            attrs={"axis": axis},
+        )
+    )
+    return out, concat_nodes
 
 
 def _build_entry_tiles(entry_tensor, entry_ranges, name_scope=None):
@@ -181,9 +238,6 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
     tile_by_key = {key: tile for key, tile in zip(split_keys, tiles)}
     concat_nodes = []
 
-    def _make_output(name, shape):
-        return gs.Variable(name, dtype=output_tensor.dtype, shape=shape)
-
     if split_count_w == 1:
         final_concat_inputs = [tile_by_key[(split_id_h, 0)] for split_id_h in range(split_count_h)]
     else:
@@ -191,29 +245,24 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
         for split_id_h in range(split_count_h):
             row_concat_inputs = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
             row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_concat_inputs[0].shape[2])
-            row_out = _make_output(
-                _scoped_name(name_scope, f"{output_tensor.name}_row{split_id_h}"),
-                row_out_shape,
+            row_out, row_concat_nodes = _build_bounded_concat(
+                inputs=row_concat_inputs,
+                axis=3,
+                output_name=_scoped_name(name_scope, f"{output_tensor.name}_row{split_id_h}"),
+                output_shape=row_out_shape,
+                node_name=_scoped_name(name_scope, f"{output_tensor.name}_concat_row{split_id_h}"),
+                output_dtype=output_tensor.dtype,
             )
-            concat_nodes.append(
-                gs.Node(
-                    name=_scoped_name(name_scope, f"{output_tensor.name}_concat_row{split_id_h}"),
-                    op="Concat",
-                    inputs=row_concat_inputs,
-                    outputs=[row_out],
-                    attrs={"axis": 3},
-                )
-            )
+            concat_nodes.extend(row_concat_nodes)
             final_concat_inputs.append(row_out)
 
-    out = _make_output(output_tensor.name, output_tensor.shape)
-    concat_nodes.append(
-        gs.Node(
-            name=_scoped_name(name_scope, f"{output_tensor.name}_concat"),
-            op="Concat",
-            inputs=final_concat_inputs,
-            outputs=[out],
-            attrs={"axis": 2},
-        )
+    out, final_concat_nodes = _build_bounded_concat(
+        inputs=final_concat_inputs,
+        axis=2,
+        output_name=output_tensor.name,
+        output_shape=output_tensor.shape,
+        node_name=_scoped_name(name_scope, f"{output_tensor.name}_concat"),
+        output_dtype=output_tensor.dtype,
     )
+    concat_nodes.extend(final_concat_nodes)
     return out, concat_nodes
