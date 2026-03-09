@@ -91,12 +91,8 @@ def _validate_group_topology(node_specs, in_edges, out_edges):
     reachable_from_source = _reachable_indices(source_local_index, out_edges)
     reachable_to_sink = _reachable_indices(sink_local_index, in_edges)
     for spec in node_specs:
-        assert spec.local_index in reachable_from_source, (
-            f"node {spec.node.name} is not reachable from group source node"
-        )
-        assert spec.local_index in reachable_to_sink, (
-            f"node {spec.node.name} does not feed the group sink node"
-        )
+        assert spec.local_index in reachable_from_source, f"node {spec.node.name} is not reachable from group source node"
+        assert spec.local_index in reachable_to_sink, f"node {spec.node.name} does not feed the group sink node"
 
     return sink_local_index
 
