@@ -67,15 +67,15 @@ def _require_fully_initialized(ranges, context):
     assert all(rng is not None for rng in ranges), f"internal error: missing required ranges for {context}"
 
 
-def _propagate_identity_input_ranges(out_ranges, data_input_indices):
-    return {input_index: _clone_ranges(out_ranges) for input_index in data_input_indices}
+def _propagate_identity_input_ranges(out_ranges, input_sources):
+    return {input_index: _clone_ranges(out_ranges) for input_index in input_sources}
 
 
 def _propagate_conv_input_ranges(node, node_spec, out_ranges):
-    assert len(node_spec.data_input_indices) == 1, (
+    assert len(node_spec.input_sources) == 1, (
         f"Conv node {node.name} must have exactly one non-constant data input"
     )
-    main_input_index = node_spec.data_input_indices[0]
+    main_input_index = next(iter(node_spec.input_sources))
     spec = _parse_conv_spec(node)
     h_in = _tensor_height(node.inputs[main_input_index])
     w_in = _tensor_width(node.inputs[main_input_index])
@@ -96,10 +96,10 @@ def _propagate_conv_input_ranges(node, node_spec, out_ranges):
 
 
 def _propagate_pool_input_ranges(node, node_spec, out_ranges):
-    assert len(node_spec.data_input_indices) == 1, (
+    assert len(node_spec.input_sources) == 1, (
         f"AveragePool node {node.name} must have exactly one non-constant data input"
     )
-    main_input_index = node_spec.data_input_indices[0]
+    main_input_index = next(iter(node_spec.input_sources))
     spec = _parse_pool_spec(node)
     h_in = _tensor_height(node.inputs[main_input_index])
     w_in = _tensor_width(node.inputs[main_input_index])
@@ -162,7 +162,7 @@ def _plan_node_ranges(group_info):
         elif node.op in _IDENTITY_RANGE_OPS:
             demanded_ranges_by_input = _propagate_identity_input_ranges(
                 out_ranges,
-                node_spec.data_input_indices,
+                node_spec.input_sources,
             )
         else:
             assert False, f"unsupported op {node.op} for tiled rewrite planning"

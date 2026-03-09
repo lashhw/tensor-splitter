@@ -11,7 +11,7 @@ _InputSource = namedtuple(
 
 _NodeSpec = namedtuple(
     "_NodeSpec",
-    ["node", "local_index", "data_input_indices", "input_sources"],
+    ["node", "local_index", "input_sources"],
 )
 
 _BoundaryOutputSpec = namedtuple(
@@ -135,14 +135,12 @@ def _collect_node_specs(group_nodes):
         _ensure_supported_op(node)
         assert len(node.outputs) == 1, f"node {node.name} must have exactly one output"
 
-        data_input_indices = []
         input_sources = {}
 
         for input_index, tensor in enumerate(node.inputs):
             if isinstance(tensor, gs.Constant):
                 continue
 
-            data_input_indices.append(input_index)
             producers = list(tensor.inputs)
             assert len(producers) <= 1, f"tensor {tensor.name} must have at most one producer"
 
@@ -164,13 +162,12 @@ def _collect_node_specs(group_nodes):
                 )
                 internal_edges.append((producer_local_index, local_index))
 
-        assert data_input_indices, f"node {node.name} must have at least one data input"
+        assert input_sources, f"node {node.name} must have at least one data input"
 
         node_specs.append(
             _NodeSpec(
                 node=node,
                 local_index=local_index,
-                data_input_indices=data_input_indices,
                 input_sources=input_sources,
             )
         )
