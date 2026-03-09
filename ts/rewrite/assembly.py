@@ -19,9 +19,9 @@ def _get_tile_from_source(range_plan, tiles_by_local_index, entry_tiles, source,
     return tile, produced_range
 
 
-def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, scheduled_nodes, name_scope):
+def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, name_scope):
     if produced_range == required_range:
-        return tile
+        return tile, []
 
     cropped_tile, crop_node = _build_tile_crop(
         tile=tile,
@@ -31,8 +31,68 @@ def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_pr
         name_prefix=name_prefix,
         name_scope=name_scope,
     )
-    scheduled_nodes.append(crop_node)
-    return cropped_tile
+    return cropped_tile, [crop_node]
+
+
+def _build_tiled_step(
+    group_info,
+    range_plan,
+    tiles_by_local_index,
+    entry_tiles,
+    local_index,
+    split_id,
+    split_pos,
+    name_scope,
+):
+    node_spec = group_info.node_specs[local_index]
+    node = node_spec.node
+    demanded_ranges = range_plan.input_ranges_by_node[local_index]
+    step_nodes = []
+    input_tensors_by_index = {}
+
+    for input_index, source in node_spec.input_sources.items():
+        source_tile, produced_range = _get_tile_from_source(
+            range_plan=range_plan,
+            tiles_by_local_index=tiles_by_local_index,
+            entry_tiles=entry_tiles,
+            source=source,
+            split_pos=split_pos,
+        )
+        assert source_tile is not None, (
+            f"execution_order violates dependencies: node index {group_info.node_range[0] + local_index} "
+            f"split {split_id} uses an input before producer is built"
+        )
+
+        if input_index not in demanded_ranges:
+            input_tensors_by_index[input_index] = source_tile
+            continue
+
+        prepared_tile, prep_nodes = _crop_tile_if_needed(
+            tile=source_tile,
+            produced_range=produced_range,
+            required_range=demanded_ranges[input_index][split_pos],
+            split_id=split_id,
+            name_prefix=f"{node.name or node.op}_l{local_index}_in{input_index}",
+            name_scope=name_scope,
+        )
+        step_nodes.extend(prep_nodes)
+        input_tensors_by_index[input_index] = prepared_tile
+
+    out_range = range_plan.output_ranges_by_node[local_index][split_pos]
+    spatial_slice = None
+    if node.op in {"Conv", "AveragePool"}:
+        spatial_slice = range_plan.spatial_slices_by_node[local_index][split_pos]
+
+    output_tile, tiled_node = _build_tiled_node(
+        node=node,
+        split_id=split_id,
+        input_tensors_by_index=input_tensors_by_index,
+        out_range=out_range,
+        spatial_slice=spatial_slice,
+        name_scope=name_scope,
+    )
+    step_nodes.append(tiled_node)
+    return output_tile, step_nodes
 
 
 def _group_outputs_to_stitch(group_info):
@@ -55,15 +115,15 @@ def _build_stitched_output(
     stitch_tiles = []
     stitch_ranges = range_plan.stitch_ranges_by_local_index[local_index]
     for split_pos, split_id in enumerate(range_plan.split_keys):
-        stitched_tile = _crop_tile_if_needed(
+        stitched_tile, prep_nodes = _crop_tile_if_needed(
             tile=produced_tiles[split_pos],
             produced_range=produced_ranges[split_pos],
             required_range=stitch_ranges[split_pos],
             split_id=split_id,
             name_prefix=f"{output_tensor.name}_stitch_l{local_index}",
-            scheduled_nodes=stitch_nodes,
             name_scope=name_scope,
         )
+        stitch_nodes.extend(prep_nodes)
         stitch_tiles.append(stitched_tile)
 
     stitched_out, concat_nodes = _build_group_concat(
@@ -83,14 +143,14 @@ def _build_group(group_info):
     group_start, _ = group_info.node_range
     name_scope = _group_name_scope(group_info)
 
-    entry_tiles, entry_slice_nodes = _build_entry_tiles(
+    entry_tiles, entry_split_nodes = _build_entry_tiles(
         group_info.entry_tensor,
         range_plan.entry_ranges,
         name_scope=name_scope,
     )
 
     tiles_by_local_index = [[None for _ in range(len(range_plan.split_keys))] for _ in group_info.nodes]
-    rewritten_nodes = []
+    body_nodes = []
 
     for orig_index, split_id in group_info.execution_order:
         assert split_id in split_pos_by_key, f"invalid split id {split_id} in execution_order"
@@ -100,54 +160,18 @@ def _build_group(group_info):
             f"node index {orig_index} in execution_order is outside group range {group_info.node_range}"
         )
 
-        node_spec = group_info.node_specs[local_index]
-        node = node_spec.node
-        input_tensors_by_index = {}
-        demanded_ranges = range_plan.input_ranges_by_node[local_index]
-
-        for input_index, source in node_spec.input_sources.items():
-            source_tile, produced_range = _get_tile_from_source(
-                range_plan=range_plan,
-                tiles_by_local_index=tiles_by_local_index,
-                entry_tiles=entry_tiles,
-                source=source,
-                split_pos=split_pos,
-            )
-            assert source_tile is not None, (
-                f"execution_order violates dependencies: node index {orig_index} split {split_id} "
-                f"uses an input before producer is built"
-            )
-
-            if input_index not in demanded_ranges:
-                input_tensors_by_index[input_index] = source_tile
-                continue
-
-            required_range = demanded_ranges[input_index][split_pos]
-            input_tensors_by_index[input_index] = _crop_tile_if_needed(
-                tile=source_tile,
-                produced_range=produced_range,
-                required_range=required_range,
-                split_id=split_id,
-                name_prefix=f"{node.name or node.op}_l{local_index}_in{input_index}",
-                scheduled_nodes=rewritten_nodes,
-                name_scope=name_scope,
-            )
-
-        out_range = range_plan.output_ranges_by_node[local_index][split_pos]
-        spatial_slice = None
-        if node.op in {"Conv", "AveragePool"}:
-            spatial_slice = range_plan.spatial_slices_by_node[local_index][split_pos]
-
-        output_tile, new_node = _build_tiled_node(
-            node=node,
+        output_tile, step_nodes = _build_tiled_step(
+            group_info=group_info,
+            range_plan=range_plan,
+            tiles_by_local_index=tiles_by_local_index,
+            entry_tiles=entry_tiles,
+            local_index=local_index,
             split_id=split_id,
-            input_tensors_by_index=input_tensors_by_index,
-            out_range=out_range,
-            spatial_slice=spatial_slice,
+            split_pos=split_pos,
             name_scope=name_scope,
         )
         tiles_by_local_index[local_index][split_pos] = output_tile
-        rewritten_nodes.append(new_node)
+        body_nodes.extend(step_nodes)
 
     for local_index, node_tiles in enumerate(tiles_by_local_index):
         assert all(tile is not None for tile in node_tiles), (
@@ -169,7 +193,7 @@ def _build_group(group_info):
         )
         stitched_outputs_by_tensor_id[id(output_tensor)] = stitched_out
 
-    ordered_nodes = entry_slice_nodes + rewritten_nodes + stitch_nodes
+    ordered_nodes = entry_split_nodes + body_nodes + stitch_nodes
     _ensure_toposorted(ordered_nodes)
     return ordered_nodes, stitched_outputs_by_tensor_id
 
