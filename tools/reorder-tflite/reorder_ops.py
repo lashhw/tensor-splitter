@@ -54,12 +54,16 @@ def reorder_subgraph(model, subgraph):
         if len(consumer_indices) < 2:
             continue
 
+        producer_index = producer_by_tensor.get(source_tensor)
+        if producer_index is not None and is_slice_operator(model, operators[producer_index]):
+            continue
+
         if not all(is_slice_operator(model, operators[operator_index]) for operator_index in consumer_indices):
             continue
 
         slice_indices = tuple(consumer_indices)
         moved_indices.update(slice_indices)
-        groups.append((slice_indices[0], producer_by_tensor.get(source_tensor), slice_indices))
+        groups.append((slice_indices[0], producer_index, slice_indices))
 
     if not groups:
         return SubgraphSummary(moved_ops=0, moved_groups=0, operator_count=len(operators))
