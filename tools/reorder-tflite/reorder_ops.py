@@ -13,14 +13,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-SLICE_OP_NAMES = {"SLICE", "STRIDED_SLICE"}
-BUILTIN_OPERATOR_NAMES = {
-    0: "ADD",
-    32: "CUSTOM",
-    45: "STRIDED_SLICE",
-    65: "SLICE",
-}
-
 
 @dataclass(frozen=True)
 class SubgraphSummary:
@@ -36,23 +28,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def resolve_flatc(tool_dir: Path) -> str:
-    flatc_path = tool_dir / "flatc"
-    if not flatc_path.is_file():
-        raise FileNotFoundError(
-            f"Missing {flatc_path}. Run tools/reorder-tflite/prepare.sh first."
-        )
-    return str(flatc_path)
-
-
-def operator_name(model, operator) -> str:
+def is_slice_operator(model, operator) -> bool:
     code = model["operator_codes"][operator.get("opcode_index", 0)]
-    builtin_name = code.get("builtin_code")
-    if builtin_name:
-        return builtin_name
-
-    deprecated_code = code.get("deprecated_builtin_code", 0)
-    return BUILTIN_OPERATOR_NAMES.get(deprecated_code, f"BUILTIN_{deprecated_code}")
+    return code.get("builtin_code") in {"SLICE", "STRIDED_SLICE"}
 
 
 def reorder_subgraph(model, subgraph):
@@ -80,7 +58,7 @@ def reorder_subgraph(model, subgraph):
         if producer_index is None:
             if source_tensor not in subgraph_inputs:
                 continue
-        elif operator_name(model, operators[producer_index]) in SLICE_OP_NAMES:
+        elif is_slice_operator(model, operators[producer_index]):
             continue
 
         slice_indices = []
@@ -89,7 +67,7 @@ def reorder_subgraph(model, subgraph):
             inputs = operator.get("inputs", [])
             if not inputs or inputs[0] != source_tensor:
                 continue
-            if operator_name(model, operator) not in SLICE_OP_NAMES:
+            if not is_slice_operator(model, operator):
                 continue
             slice_indices.append(operator_index)
 
@@ -140,11 +118,13 @@ def reorder_subgraph(model, subgraph):
 def main():
     args = parse_args()
     tool_dir = Path(__file__).resolve().parent
-    schema_path = tool_dir / "schema.fbs"
-    if not schema_path.is_file():
-        raise FileNotFoundError(f"TFLite schema not found at {schema_path}")
 
-    flatc_path = resolve_flatc(tool_dir)
+    schema_path = tool_dir / "schema.fbs"
+    assert schema_path.is_file()
+
+    flatc_path = tool_dir / "flatc"
+    assert flatc_path.is_file()
+
     input_path = Path(args.input_tflite).resolve()
     output_path = Path(args.output_tflite).resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
