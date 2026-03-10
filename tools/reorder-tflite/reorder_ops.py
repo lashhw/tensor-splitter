@@ -46,16 +46,8 @@ def parse_args():
 
 def resolve_flatc(tool_dir: Path) -> str:
     local_flatc = tool_dir / "flatc"
-    if local_flatc.is_file():
-        return str(local_flatc)
-
-    flatc = shutil.which("flatc")
-    if flatc:
-        return flatc
-
-    raise FileNotFoundError(
-        "flatc was not found. Run tools/reorder-tflite/prepare.sh or install flatc on PATH."
-    )
+    assert local_flatc.is_file()
+    return str(local_flatc)
 
 
 def operator_code_name(model, opcode_index: int) -> str:
