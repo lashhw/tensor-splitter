@@ -36,51 +36,30 @@ def is_slice_operator(model, operator) -> bool:
 def reorder_subgraph(model, subgraph):
     operators = subgraph.get("operators", [])
     producer_by_tensor = {}
-    consumers_by_tensor = defaultdict(list)
+    consumers_by_source_tensor = defaultdict(list)
 
     for operator_index, operator in enumerate(operators):
         for tensor_index in operator.get("outputs", []):
             if tensor_index >= 0:
                 producer_by_tensor[tensor_index] = operator_index
 
-        for tensor_index in operator.get("inputs", []):
-            if tensor_index >= 0:
-                consumers_by_tensor[tensor_index].append(operator_index)
+        inputs = operator.get("inputs", [])
+        if inputs and inputs[0] >= 0:
+            consumers_by_source_tensor[inputs[0]].append(operator_index)
 
-    subgraph_inputs = {tensor_index for tensor_index in subgraph.get("inputs", []) if tensor_index >= 0}
     groups = []
     moved_indices = set()
 
-    # Find sibling entry-slice groups: same source tensor, at least two slice consumers,
-    # and the source tensor comes from a non-slice op or a subgraph input.
-    for source_tensor, consumer_indices in consumers_by_tensor.items():
-        producer_index = producer_by_tensor.get(source_tensor)
-        if producer_index is None:
-            if source_tensor not in subgraph_inputs:
-                continue
-        elif is_slice_operator(model, operators[producer_index]):
+    for source_tensor, consumer_indices in consumers_by_source_tensor.items():
+        if len(consumer_indices) < 2:
             continue
 
-        slice_indices = []
-        for operator_index in consumer_indices:
-            operator = operators[operator_index]
-            inputs = operator.get("inputs", [])
-            if not inputs or inputs[0] != source_tensor:
-                continue
-            if not is_slice_operator(model, operator):
-                continue
-            slice_indices.append(operator_index)
-
-        if len(slice_indices) < 2:
+        if not all(is_slice_operator(model, operators[operator_index]) for operator_index in consumer_indices):
             continue
 
-        overlap = moved_indices.intersection(slice_indices)
-        if overlap:
-            overlap_text = ", ".join(str(index) for index in sorted(overlap))
-            raise ValueError(f"slice group overlap detected for operators: {overlap_text}")
-
+        slice_indices = tuple(consumer_indices)
         moved_indices.update(slice_indices)
-        groups.append((slice_indices[0], producer_index, tuple(slice_indices)))
+        groups.append((slice_indices[0], producer_by_tensor.get(source_tensor), slice_indices))
 
     if not groups:
         return SubgraphSummary(moved_ops=0, moved_groups=0, operator_count=len(operators))
