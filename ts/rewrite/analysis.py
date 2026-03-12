@@ -69,7 +69,6 @@ def _reachable_indices(seed_indices, edges):
 def _validate_group_topology(node_specs, in_edges, out_edges):
     source_local_indices = [index for index, incoming in enumerate(in_edges) if not incoming]
     assert source_local_indices, "group must have at least one source node"
-    assert source_local_indices[0] == 0, "first group source node must be the first node in node_range"
 
     sink_local_indices = [index for index, outgoing in enumerate(out_edges) if not outgoing]
     assert len(sink_local_indices) == 1, "group must have exactly one sink node"
@@ -120,15 +119,13 @@ def _collect_node_specs(group_nodes, graph_outputs):
 
     for local_index, node in enumerate(group_nodes):
         _ensure_supported_op(node)
-        assert len(node.outputs) == 1, f"node {node.name} must have exactly one output"
-
         input_sources = {}
 
         for input_index, tensor in enumerate(node.inputs):
             if isinstance(tensor, gs.Constant):
                 continue
 
-            producers = list(tensor.inputs)
+            producers = tensor.inputs
             assert len(producers) <= 1, f"tensor {tensor.name} must have at most one producer"
 
             producer_local_index = None
@@ -139,9 +136,7 @@ def _collect_node_specs(group_nodes, graph_outputs):
                 if entry_tensor is None:
                     entry_tensor = tensor
                 else:
-                    assert tensor is entry_tensor, (
-                        "group source nodes must all read the same external entry tensor"
-                    )
+                    assert tensor is entry_tensor, "group source nodes must all read the same external entry tensor"
                 input_sources[input_index] = _InputSource(
                     kind="entry",
                     producer_local_index=None,
@@ -153,7 +148,8 @@ def _collect_node_specs(group_nodes, graph_outputs):
                 )
                 internal_edges.append((producer_local_index, local_index))
 
-        assert input_sources, f"node {node.name} must have at least one data input"
+        assert input_sources, f"node {node.name} must have at least one input"
+        assert len(node.outputs) == 1, f"node {node.name} must have exactly one output"
 
         node_specs.append(
             _NodeSpec(
@@ -163,15 +159,16 @@ def _collect_node_specs(group_nodes, graph_outputs):
             )
         )
 
-    assert entry_tensor is not None, "group must have exactly one shared external entry tensor"
+    assert entry_tensor is not None, "group must have exactly one external entry tensor"
 
     in_edges, out_edges = _build_adjacency(len(group_nodes), internal_edges)
     sink_local_index = _validate_group_topology(node_specs, in_edges, out_edges)
     _validate_non_sink_outputs(group_nodes, sink_local_index, graph_outputs)
+
     return entry_tensor, node_specs
 
 
-def _analyze_group(orig_nodes, group_cfg, graph_outputs=()):
+def _analyze_group(orig_nodes, group_cfg, graph_outputs):
     _ensure_toposorted(orig_nodes)
 
     start, end = group_cfg.node_range
