@@ -61,8 +61,9 @@ def _plan_node_ranges(group_info):
 
     output_ranges_by_node = [[None for _ in range(split_count)] for _ in range(node_count)]
     input_ranges_by_node = [{} for _ in range(node_count)]
-    spatial_slices_by_node = [None for _ in range(node_count)]
+    spatial_slices_by_node = [[] for _ in range(node_count)]
     entry_ranges = [None for _ in range(split_count)]
+
     height_ranges = _partition_ranges(group_info.exit_tensor.shape[2], split_count_h)
     width_ranges = _partition_ranges(group_info.exit_tensor.shape[3], split_count_w)
     sink_stitch_ranges = [(h_range, w_range) for h_range in height_ranges for w_range in width_ranges]
@@ -73,21 +74,17 @@ def _plan_node_ranges(group_info):
         node = node_spec.node
 
         out_ranges = output_ranges_by_node[local_index]
-        assert all(rng is not None for rng in out_ranges), (
-            f"internal error: missing required ranges for node {node.name} output"
-        )
+        assert all(rng is not None for rng in out_ranges)
 
-        if node.op == "Conv":
-            assert len(node_spec.input_sources) == 1, (
-                f"Conv node {node.name} must have exactly one non-constant data input"
-            )
+        if node.op in {"Conv", "AveragePool"}:
+            assert len(node_spec.input_sources) == 1
             main_input_index = next(iter(node_spec.input_sources))
-            spec = _parse_conv_spec(node)
+            spec = _parse_conv_spec(node) if node.op == "Conv" else _parse_pool_spec(node)
             h_in = node.inputs[main_input_index].shape[2]
             w_in = node.inputs[main_input_index].shape[3]
 
             demanded_ranges = []
-            conv_slices = []
+            spatial_slices = []
             for (y0, y1), (x0, x1) in out_ranges:
                 slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
                 demanded_ranges.append(
@@ -96,33 +93,9 @@ def _plan_node_ranges(group_info):
                         (slice_info.width.slice_start, slice_info.width.slice_end),
                     )
                 )
-                conv_slices.append(slice_info)
-
+                spatial_slices.append(slice_info)
             demanded_ranges_by_input = {main_input_index: demanded_ranges}
-            spatial_slices_by_node[local_index] = conv_slices
-        elif node.op == "AveragePool":
-            assert len(node_spec.input_sources) == 1, (
-                f"AveragePool node {node.name} must have exactly one non-constant data input"
-            )
-            main_input_index = next(iter(node_spec.input_sources))
-            spec = _parse_pool_spec(node)
-            h_in = node.inputs[main_input_index].shape[2]
-            w_in = node.inputs[main_input_index].shape[3]
-
-            demanded_ranges = []
-            pool_slices = []
-            for (y0, y1), (x0, x1) in out_ranges:
-                slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
-                demanded_ranges.append(
-                    (
-                        (slice_info.height.slice_start, slice_info.height.slice_end),
-                        (slice_info.width.slice_start, slice_info.width.slice_end),
-                    )
-                )
-                pool_slices.append(slice_info)
-
-            demanded_ranges_by_input = {main_input_index: demanded_ranges}
-            spatial_slices_by_node[local_index] = pool_slices
+            spatial_slices_by_node[local_index] = spatial_slices
         elif node.op in _IDENTITY_RANGE_OPS:
             demanded_ranges_by_input = {
                 input_index: _clone_ranges(out_ranges)
