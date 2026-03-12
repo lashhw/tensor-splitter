@@ -8,10 +8,10 @@ _RangePlan = namedtuple(
     "_RangePlan",
     [
         "split_keys",
-        "entry_ranges",
         "output_ranges_by_node",
         "input_ranges_by_node",
         "spatial_slices_by_node",
+        "entry_ranges",
         "sink_stitch_ranges",
     ],
 )
@@ -39,9 +39,8 @@ def _merge_range(existing, new_range):
 
 
 def _merge_range_list(dst_ranges, src_ranges):
-    assert len(dst_ranges) == len(src_ranges), "internal error: range list size mismatch"
+    assert len(dst_ranges) == len(src_ranges)
     for idx, src_range in enumerate(src_ranges):
-        assert src_range is not None, "internal error: source range must be initialized"
         dst_ranges[idx] = _merge_range(dst_ranges[idx], src_range)
 
 
@@ -94,40 +93,32 @@ def _plan_node_ranges(group_info):
                     )
                 )
                 spatial_slices.append(slice_info)
-            demanded_ranges_by_input = {main_input_index: demanded_ranges}
+            input_ranges_by_node[local_index] = {main_input_index: demanded_ranges}
             spatial_slices_by_node[local_index] = spatial_slices
         elif node.op in _IDENTITY_RANGE_OPS:
-            demanded_ranges_by_input = {
+            input_ranges_by_node[local_index] = {
                 input_index: _clone_ranges(out_ranges)
                 for input_index in node_spec.input_sources
             }
         else:
             assert False, f"unsupported op {node.op} for tiled rewrite planning"
 
-        input_ranges_by_node[local_index] = demanded_ranges_by_input
-
-        for input_index, demanded_ranges in demanded_ranges_by_input.items():
+        for input_index, demanded_ranges in input_ranges_by_node[local_index].items():
             source = node_spec.input_sources[input_index]
             if source.kind == "entry":
                 _merge_range_list(entry_ranges, demanded_ranges)
             else:
-                producer_out_ranges = output_ranges_by_node[source.producer_local_index]
-                _merge_range_list(producer_out_ranges, demanded_ranges)
+                _merge_range_list(output_ranges_by_node[source.producer_local_index], demanded_ranges)
 
-    assert all(rng is not None for rng in entry_ranges), (
-        f"internal error: missing required ranges for group entry tensor {group_info.entry_tensor.name}"
-    )
-
+    assert all(rng is not None for rng in entry_ranges)
     for local_index, node_spec in enumerate(group_info.node_specs):
-        assert all(rng is not None for rng in output_ranges_by_node[local_index]), (
-            f"internal error: missing required ranges for node {node_spec.node.name} output"
-        )
+        assert all(rng is not None for rng in output_ranges_by_node[local_index])
 
     return _RangePlan(
         split_keys=split_keys,
-        entry_ranges=entry_ranges,
         output_ranges_by_node=output_ranges_by_node,
         input_ranges_by_node=input_ranges_by_node,
         spatial_slices_by_node=spatial_slices_by_node,
+        entry_ranges=entry_ranges,
         sink_stitch_ranges=sink_stitch_ranges,
     )
