@@ -101,12 +101,14 @@ def _validate_non_sink_outputs(group_nodes, sink_local_index, graph_outputs):
         external_consumers = [
             consumer for consumer in output_tensor.outputs if id(consumer) not in group_node_ids
         ]
+
         assert not external_consumers, (
             f"only the sink node may have external consumers, but {node.name} feeds "
             f"{external_consumers[0].name}"
         )
         assert id(output_tensor) not in graph_output_ids, (
-            f"only the sink node may feed graph outputs, but {node.name} is a graph output"
+            "only the sink node may feed graph outputs, but non-sink node "
+            f"{node.name} produces graph output tensor {output_tensor.name}"
         )
 
 
