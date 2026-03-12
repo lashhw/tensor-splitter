@@ -1,7 +1,6 @@
 from collections import namedtuple
 
 from .conv import _conv_input_slice_for_output_2d, _parse_conv_spec, _parse_pool_spec
-from .tensor import _tensor_height, _tensor_width
 
 _RangePlan = namedtuple(
     "_RangePlan",
@@ -17,6 +16,14 @@ _RangePlan = namedtuple(
 
 
 _IDENTITY_RANGE_OPS = {"Relu", "Add", "Concat", "Reshape"}
+
+
+def _tensor_height(tensor):
+    return tensor.shape[2]
+
+
+def _tensor_width(tensor):
+    return tensor.shape[3]
 
 
 def _partition_ranges(total, part_count):

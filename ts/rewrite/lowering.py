@@ -2,7 +2,6 @@ import numpy as np
 import onnx_graphsurgeon as gs
 
 from .conv import _avg_pool_attrs_with_hw_pad, _conv_attrs_with_hw_pad
-from .tensor import _shape_with_dim_size
 
 _MAX_CONCAT_INPUTS = 10
 
@@ -17,6 +16,12 @@ def _node_base_name(node):
 
 def _make_constant(name, values):
     return gs.Constant(name, values)
+
+
+def _shape_with_dim_size(shape, dim, size):
+    new_shape = list(shape)
+    new_shape[dim] = size
+    return new_shape
 
 
 def _scoped_name(name_scope, base_name):
