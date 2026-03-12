@@ -95,46 +95,29 @@ def _build_tiled_step(
     return output_tile, step_nodes
 
 
-def _group_outputs_to_stitch(group_info):
-    sink_local_index = len(group_info.nodes) - 1
-    outputs = [(sink_local_index, group_info.exit_tensor)]
-    outputs.extend((spec.local_index, spec.output_tensor) for spec in group_info.boundary_output_specs)
-    return outputs
-
-
-def _build_stitched_output(
-    local_index,
-    output_tensor,
-    produced_tiles,
-    produced_ranges,
-    range_plan,
-    tile_count,
-    stitch_nodes,
-    name_scope,
-):
+def _build_stitched_exit(group_info, range_plan, sink_tiles, stitch_nodes, name_scope):
     stitch_tiles = []
-    stitch_ranges = range_plan.stitch_ranges_by_local_index[local_index]
     for split_pos, split_id in enumerate(range_plan.split_keys):
         stitched_tile, prep_nodes = _crop_tile_if_needed(
-            tile=produced_tiles[split_pos],
-            produced_range=produced_ranges[split_pos],
-            required_range=stitch_ranges[split_pos],
+            tile=sink_tiles[split_pos],
+            produced_range=range_plan.output_ranges_by_node[-1][split_pos],
+            required_range=range_plan.sink_stitch_ranges[split_pos],
             split_id=split_id,
-            name_prefix=f"{output_tensor.name}_stitch_l{local_index}",
+            name_prefix=f"{group_info.exit_tensor.name}_stitch",
             name_scope=name_scope,
         )
         stitch_nodes.extend(prep_nodes)
         stitch_tiles.append(stitched_tile)
 
-    stitched_out, concat_nodes = _build_group_concat(
+    stitched_exit, concat_nodes = _build_group_concat(
         tiles=stitch_tiles,
-        output_tensor=output_tensor,
+        output_tensor=group_info.exit_tensor,
         split_keys=range_plan.split_keys,
-        tile_count=tile_count,
+        tile_count=group_info.tile_count,
         name_scope=name_scope,
     )
     stitch_nodes.extend(concat_nodes)
-    return stitched_out
+    return stitched_exit
 
 
 def _build_group(group_info):
@@ -178,47 +161,35 @@ def _build_group(group_info):
             f"execution_order has missing rewritten nodes for node index {group_info.node_range[0] + local_index}"
         )
 
-    stitched_outputs_by_tensor_id = {}
     stitch_nodes = []
-    for local_index, output_tensor in _group_outputs_to_stitch(group_info):
-        stitched_out = _build_stitched_output(
-            local_index=local_index,
-            output_tensor=output_tensor,
-            produced_tiles=tiles_by_local_index[local_index],
-            produced_ranges=range_plan.output_ranges_by_node[local_index],
-            range_plan=range_plan,
-            tile_count=group_info.tile_count,
-            stitch_nodes=stitch_nodes,
-            name_scope=name_scope,
-        )
-        stitched_outputs_by_tensor_id[id(output_tensor)] = stitched_out
+    stitched_exit = _build_stitched_exit(
+        group_info=group_info,
+        range_plan=range_plan,
+        sink_tiles=tiles_by_local_index[-1],
+        stitch_nodes=stitch_nodes,
+        name_scope=name_scope,
+    )
 
     ordered_nodes = entry_split_nodes + body_nodes + stitch_nodes
     _ensure_toposorted(ordered_nodes)
-    return ordered_nodes, stitched_outputs_by_tensor_id
+    return ordered_nodes, stitched_exit
 
 
-def _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_outputs_by_tensor_id):
+def _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_exit):
     node_a = orig_nodes[group_info.node_range[0]]
     node_b = orig_nodes[group_info.node_range[1]]
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
     end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
-    group_node_ids = {id(node) for node in group_info.nodes}
 
-    stitched_outputs = [group_info.exit_tensor]
-    stitched_outputs.extend(spec.output_tensor for spec in group_info.boundary_output_specs)
-    for output_tensor in stitched_outputs:
-        stitched_out = stitched_outputs_by_tensor_id[id(output_tensor)]
-        for consumer in list(output_tensor.outputs):
-            if id(consumer) in group_node_ids:
-                continue
-            for idx, inp in enumerate(consumer.inputs):
-                if inp is output_tensor:
-                    consumer.inputs[idx] = stitched_out
+    for consumer in list(group_info.exit_tensor.outputs):
+        assert consumer not in group_info.nodes, "sink output unexpectedly feeds a node inside the split group"
+        for idx, inp in enumerate(consumer.inputs):
+            if inp is group_info.exit_tensor:
+                consumer.inputs[idx] = stitched_exit
 
-        for idx, out in enumerate(graph.outputs):
-            if out is output_tensor:
-                graph.outputs[idx] = stitched_out
+    for idx, out in enumerate(graph.outputs):
+        if out is group_info.exit_tensor:
+            graph.outputs[idx] = stitched_exit
 
     for node in group_info.nodes:
         node.inputs = []

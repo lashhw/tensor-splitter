@@ -38,9 +38,9 @@ def rewrite_model(model, groups):
     orig_nodes = list(graph.nodes)
 
     for group_cfg in groups:
-        group_info = _analyze_group(orig_nodes, group_cfg)
-        new_nodes, stitched_outputs_by_tensor_id = _build_group(group_info)
-        _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_outputs_by_tensor_id)
+        group_info = _analyze_group(orig_nodes, group_cfg, graph.outputs)
+        new_nodes, stitched_exit = _build_group(group_info)
+        _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_exit)
 
     out_model = gs.export_onnx(graph)
     out_model = onnx.shape_inference.infer_shapes(out_model)

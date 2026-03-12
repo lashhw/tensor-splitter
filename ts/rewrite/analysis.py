@@ -14,11 +14,6 @@ _NodeSpec = namedtuple(
     ["node", "local_index", "input_sources"],
 )
 
-_BoundaryOutputSpec = namedtuple(
-    "_BoundaryOutputSpec",
-    ["local_index", "output_tensor"],
-)
-
 _GroupInfo = namedtuple(
     "_GroupInfo",
     [
@@ -28,7 +23,6 @@ _GroupInfo = namedtuple(
         "nodes",
         "entry_tensor",
         "exit_tensor",
-        "boundary_output_specs",
         "node_specs",
     ],
 )
@@ -96,30 +90,28 @@ def _validate_group_topology(node_specs, in_edges, out_edges):
     return sink_local_index
 
 
-def _collect_boundary_outputs(group_nodes, node_specs, sink_local_index):
-    boundary_output_specs = []
+def _validate_non_sink_outputs(group_nodes, sink_local_index, graph_outputs):
     group_node_ids = {id(node) for node in group_nodes}
+    graph_output_ids = {id(tensor) for tensor in graph_outputs}
 
-    for spec in node_specs:
-        if spec.local_index == sink_local_index:
+    for local_index, node in enumerate(group_nodes):
+        if local_index == sink_local_index:
             continue
 
-        output_tensor = spec.node.outputs[0]
-        has_external_consumer = any(id(consumer) not in group_node_ids for consumer in output_tensor.outputs)
-        if not has_external_consumer:
-            continue
-
-        boundary_output_specs.append(
-            _BoundaryOutputSpec(
-                local_index=spec.local_index,
-                output_tensor=output_tensor,
-            )
+        output_tensor = node.outputs[0]
+        external_consumers = [
+            consumer for consumer in output_tensor.outputs if id(consumer) not in group_node_ids
+        ]
+        assert not external_consumers, (
+            f"only the sink node may have external consumers, but {node.name} feeds "
+            f"{external_consumers[0].name}"
+        )
+        assert id(output_tensor) not in graph_output_ids, (
+            f"only the sink node may feed graph outputs, but {node.name} is a graph output"
         )
 
-    return boundary_output_specs
 
-
-def _collect_node_specs(group_nodes):
+def _collect_node_specs(group_nodes, graph_outputs):
     local_index_by_id = {id(node): local_index for local_index, node in enumerate(group_nodes)}
 
     entry_tensor = None
@@ -147,7 +139,9 @@ def _collect_node_specs(group_nodes):
                 if entry_tensor is None:
                     entry_tensor = tensor
                 else:
-                    assert tensor is entry_tensor, "group must have exactly one external entry tensor"
+                    assert tensor is entry_tensor, (
+                        "group source nodes must all read the same external entry tensor"
+                    )
                 input_sources[input_index] = _InputSource(
                     kind="entry",
                     producer_local_index=None,
@@ -169,22 +163,22 @@ def _collect_node_specs(group_nodes):
             )
         )
 
-    assert entry_tensor is not None, "group must have exactly one external entry tensor"
+    assert entry_tensor is not None, "group must have exactly one shared external entry tensor"
 
     in_edges, out_edges = _build_adjacency(len(group_nodes), internal_edges)
     sink_local_index = _validate_group_topology(node_specs, in_edges, out_edges)
-    boundary_output_specs = _collect_boundary_outputs(group_nodes, node_specs, sink_local_index)
-    return entry_tensor, boundary_output_specs, node_specs
+    _validate_non_sink_outputs(group_nodes, sink_local_index, graph_outputs)
+    return entry_tensor, node_specs
 
 
-def _analyze_group(orig_nodes, group_cfg):
+def _analyze_group(orig_nodes, group_cfg, graph_outputs=()):
     _ensure_toposorted(orig_nodes)
 
     start, end = group_cfg.node_range
     assert 0 <= start <= end < len(orig_nodes), f"invalid node_range {group_cfg.node_range}"
 
     group_nodes = orig_nodes[start : end + 1]
-    entry_tensor, boundary_output_specs, node_specs = _collect_node_specs(group_nodes)
+    entry_tensor, node_specs = _collect_node_specs(group_nodes, graph_outputs)
     exit_tensor = group_nodes[-1].outputs[0]
 
     return _GroupInfo(
@@ -194,6 +188,5 @@ def _analyze_group(orig_nodes, group_cfg):
         nodes=group_nodes,
         entry_tensor=entry_tensor,
         exit_tensor=exit_tensor,
-        boundary_output_specs=boundary_output_specs,
         node_specs=node_specs,
     )

@@ -10,7 +10,7 @@ _RangePlan = namedtuple(
         "output_ranges_by_node",
         "input_ranges_by_node",
         "spatial_slices_by_node",
-        "stitch_ranges_by_local_index",
+        "sink_stitch_ranges",
     ],
 )
 
@@ -135,23 +135,12 @@ def _plan_node_ranges(group_info):
     input_ranges_by_node = [{} for _ in range(node_count)]
     spatial_slices_by_node = [None for _ in range(node_count)]
     entry_ranges = [None for _ in range(split_count)]
-    stitch_ranges_by_local_index = {}
-
-    stitch_targets = [(node_count - 1, group_info.exit_tensor)] + [
-        (spec.local_index, spec.output_tensor)
-        for spec in group_info.boundary_output_specs
-    ]
-
-    for local_index, output_tensor in stitch_targets:
-        if local_index in stitch_ranges_by_local_index:
-            continue
-        stitch_ranges = _partition_ranges_2d(
-            height=_tensor_height(output_tensor),
-            width=_tensor_width(output_tensor),
-            tile_count=group_info.tile_count,
-        )
-        stitch_ranges_by_local_index[local_index] = stitch_ranges
-        output_ranges_by_node[local_index] = _clone_ranges(stitch_ranges)
+    sink_stitch_ranges = _partition_ranges_2d(
+        height=_tensor_height(group_info.exit_tensor),
+        width=_tensor_width(group_info.exit_tensor),
+        tile_count=group_info.tile_count,
+    )
+    output_ranges_by_node[-1] = _clone_ranges(sink_stitch_ranges)
 
     for local_index in range(node_count - 1, -1, -1):
         node_spec = group_info.node_specs[local_index]
@@ -195,5 +184,5 @@ def _plan_node_ranges(group_info):
         output_ranges_by_node=output_ranges_by_node,
         input_ranges_by_node=input_ranges_by_node,
         spatial_slices_by_node=spatial_slices_by_node,
-        stitch_ranges_by_local_index=stitch_ranges_by_local_index,
+        sink_stitch_ranges=sink_stitch_ranges,
     )
