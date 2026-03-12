@@ -66,6 +66,7 @@ def _plan_node_ranges(group_info):
     height_ranges = _partition_ranges(group_info.exit_tensor.shape[2], split_count_h)
     width_ranges = _partition_ranges(group_info.exit_tensor.shape[3], split_count_w)
     sink_stitch_ranges = [(h_range, w_range) for h_range in height_ranges for w_range in width_ranges]
+
     output_ranges_by_node[-1] = _clone_ranges(sink_stitch_ranges)
 
     for local_index in range(node_count - 1, -1, -1):
