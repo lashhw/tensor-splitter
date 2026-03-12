@@ -1,8 +1,6 @@
 import numpy as np
 import onnx_graphsurgeon as gs
 
-from .conv import _avg_pool_attrs_with_hw_pad, _conv_attrs_with_hw_pad
-
 _MAX_CONCAT_INPUTS = 10
 
 
@@ -182,7 +180,7 @@ def _build_tiled_node(
     split_id,
     input_tensors_by_index,
     out_range,
-    spatial_slice=None,
+    hw_pads=None,
     name_scope=None,
 ):
     node_base_name = _node_base_name(node)
@@ -217,12 +215,10 @@ def _build_tiled_node(
         shape=out_shape,
     )
 
-    if node.op == "Conv":
-        assert spatial_slice is not None, "spatial slice is required when lowering Conv nodes"
-        attrs = _conv_attrs_with_hw_pad(node, spatial_slice)
-    elif node.op == "AveragePool":
-        assert spatial_slice is not None, "spatial slice is required when lowering AveragePool nodes"
-        attrs = _avg_pool_attrs_with_hw_pad(node, spatial_slice)
+    if node.op in {"Conv", "AveragePool"}:
+        assert hw_pads is not None, f"hw pads are required when lowering {node.op} nodes"
+        attrs = dict(node.attrs)
+        attrs["pads"] = hw_pads
     else:
         attrs = dict(node.attrs) if node.attrs else {}
 

@@ -79,16 +79,16 @@ def _build_tiled_step(
         input_tensors_by_index[input_index] = prepared_tile
 
     out_range = range_plan.output_ranges_by_node[local_index][split_pos]
-    spatial_slice = None
+    hw_pads = None
     if node.op in {"Conv", "AveragePool"}:
-        spatial_slice = range_plan.spatial_slices_by_node[local_index][split_pos]
+        hw_pads = range_plan.hw_pads_by_node[local_index][split_pos]
 
     output_tile, tiled_node = _build_tiled_node(
         node=node,
         split_id=split_id,
         input_tensors_by_index=input_tensors_by_index,
         out_range=out_range,
-        spatial_slice=spatial_slice,
+        hw_pads=hw_pads,
         name_scope=name_scope,
     )
     step_nodes.append(tiled_node)

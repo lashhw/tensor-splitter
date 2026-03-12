@@ -10,7 +10,7 @@ _RangePlan = namedtuple(
         "split_keys",
         "output_ranges_by_node",
         "input_ranges_by_node",
-        "spatial_slices_by_node",
+        "hw_pads_by_node",
         "entry_ranges",
         "sink_stitch_ranges",
     ],
@@ -60,7 +60,7 @@ def _plan_node_ranges(group_info):
 
     output_ranges_by_node = [[None for _ in range(split_count)] for _ in range(node_count)]
     input_ranges_by_node = [{} for _ in range(node_count)]
-    spatial_slices_by_node = [[] for _ in range(node_count)]
+    hw_pads_by_node = [[] for _ in range(node_count)]
     entry_ranges = [None for _ in range(split_count)]
 
     height_ranges = _partition_ranges(group_info.exit_tensor.shape[2], split_count_h)
@@ -83,7 +83,7 @@ def _plan_node_ranges(group_info):
             w_in = node.inputs[main_input_index].shape[3]
 
             demanded_ranges = []
-            spatial_slices = []
+            hw_pads = []
             for (y0, y1), (x0, x1) in out_ranges:
                 slice_info = _conv_input_slice_for_output_2d(y0, y1, x0, x1, spec, h_in, w_in)
                 demanded_ranges.append(
@@ -92,9 +92,16 @@ def _plan_node_ranges(group_info):
                         (slice_info.width.slice_start, slice_info.width.slice_end),
                     )
                 )
-                spatial_slices.append(slice_info)
+                hw_pads.append(
+                    (
+                        slice_info.height.pad_top,
+                        slice_info.width.pad_top,
+                        slice_info.height.pad_bottom,
+                        slice_info.width.pad_bottom,
+                    )
+                )
             input_ranges_by_node[local_index] = {main_input_index: demanded_ranges}
-            spatial_slices_by_node[local_index] = spatial_slices
+            hw_pads_by_node[local_index] = hw_pads
         elif node.op in _IDENTITY_RANGE_OPS:
             input_ranges_by_node[local_index] = {
                 input_index: _clone_ranges(out_ranges)
@@ -118,7 +125,7 @@ def _plan_node_ranges(group_info):
         split_keys=split_keys,
         output_ranges_by_node=output_ranges_by_node,
         input_ranges_by_node=input_ranges_by_node,
-        spatial_slices_by_node=spatial_slices_by_node,
+        hw_pads_by_node=hw_pads_by_node,
         entry_ranges=entry_ranges,
         sink_stitch_ranges=sink_stitch_ranges,
     )

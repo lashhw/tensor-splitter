@@ -44,28 +44,6 @@ def _parse_conv_spec(node):
     return _ConvSpec(kernel_shape=kernel_shape, strides=strides, pads=pads)
 
 
-def _conv_attrs_with_hw_pad(node, slice_info_2d):
-    attrs = dict(node.attrs)
-    attrs["pads"] = [
-        slice_info_2d.height.pad_top,
-        slice_info_2d.width.pad_top,
-        slice_info_2d.height.pad_bottom,
-        slice_info_2d.width.pad_bottom,
-    ]
-    return attrs
-
-
-def _avg_pool_attrs_with_hw_pad(node, slice_info_2d):
-    attrs = dict(node.attrs)
-    attrs["pads"] = [
-        slice_info_2d.height.pad_top,
-        slice_info_2d.width.pad_top,
-        slice_info_2d.height.pad_bottom,
-        slice_info_2d.width.pad_bottom,
-    ]
-    return attrs
-
-
 def _conv_input_slice_for_output_axis(out0, out1, kernel, stride, pad_before, input_size):
     x0 = out0 * stride - pad_before
     x1 = (out1 - 1) * stride - pad_before + kernel
