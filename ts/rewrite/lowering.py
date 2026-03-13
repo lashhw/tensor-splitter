@@ -23,8 +23,6 @@ def _shape_with_dim_size(shape, dim, size):
 
 
 def _scoped_name(name_scope, base_name):
-    if not name_scope:
-        return base_name
     return f"{name_scope}__{base_name}"
 
 
@@ -102,7 +100,7 @@ def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, ou
     return out, concat_nodes
 
 
-def _build_entry_tiles(entry_tensor, entry_ranges, name_scope=None):
+def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
     axis = _infer_spatial_axis(entry_tensor.shape)
     tiles = []
     slice_nodes = []
@@ -111,19 +109,15 @@ def _build_entry_tiles(entry_tensor, entry_ranges, name_scope=None):
         ends_arr = np.array([end_h, end_w], dtype=np.int64)
         axes_arr = np.array([axis, axis + 1], dtype=np.int64)
         steps_arr = np.array([1, 1], dtype=np.int64)
-        out_shape = _shape_with_hw(
-            entry_tensor.shape,
-            h_size=end_h - start_h,
-            w_size=end_w - start_w,
-        )
+        out_shape = _shape_with_hw(entry_tensor.shape, end_h - start_h, end_w - start_w)
 
-        base_name = _scoped_name(name_scope, f"{entry_tensor.name}_slice{tile_id}")
+        base_name = _scoped_name(name_scope, f"{entry_tensor.name}_split{tile_id}")
         starts = _make_constant(f"{base_name}_starts", starts_arr)
         ends = _make_constant(f"{base_name}_ends", ends_arr)
         axes = _make_constant(f"{base_name}_axes", axes_arr)
         steps = _make_constant(f"{base_name}_steps", steps_arr)
         out = gs.Variable(
-            _scoped_name(name_scope, f"{entry_tensor.name}_split{tile_id}"),
+            f"{base_name}_out",
             dtype=entry_tensor.dtype,
             shape=out_shape,
         )
@@ -166,12 +160,14 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
         dtype=tile.dtype,
         shape=_shape_with_hw(tile.shape, h_size=req_y1 - req_y0, w_size=req_x1 - req_x0),
     )
+
     node = gs.Node(
         name=base_name,
         op="Slice",
         inputs=[tile, starts, ends, axes, steps],
         outputs=[out],
     )
+
     return out, node
 
 
@@ -191,7 +187,7 @@ def _build_tiled_node(
 
     assert out_range is not None, f"out_range is required when lowering op {node.op}"
     (y0, y1), (x0, x1) = out_range
-    out_shape = _shape_with_hw(node.outputs[0].shape, h_size=y1 - y0, w_size=x1 - x0)
+    out_shape = _shape_with_hw(node.outputs[0].shape, y1 - y0, x1 - x0)
 
     if node.op == "Reshape" and len(new_inputs) >= 2:
         shape_values = _resolve_constant_input_values(node.inputs[1])

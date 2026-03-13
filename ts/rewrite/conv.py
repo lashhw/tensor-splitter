@@ -20,11 +20,6 @@ _ConvInputSlice2D = namedtuple(
     ["height", "width"],
 )
 
-
-def _get_attr(node, name):
-    return node.attrs[name]
-
-
 def _ensure_list(value, length):
     assert isinstance(value, list)
     assert len(value) == length

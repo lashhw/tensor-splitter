@@ -129,14 +129,13 @@ def _build_group(group_info):
     entry_tiles, entry_split_nodes = _build_entry_tiles(
         group_info.entry_tensor,
         range_plan.entry_ranges,
-        name_scope=name_scope,
+        name_scope,
     )
 
     tiles_by_local_index = [[None for _ in range(len(range_plan.split_keys))] for _ in group_info.nodes]
     body_nodes = []
 
     for orig_index, split_id in group_info.execution_order:
-        assert split_id in split_pos_by_key, f"invalid split id {split_id} in execution_order"
         split_pos = split_pos_by_key[split_id]
         local_index = orig_index - group_start
         assert 0 <= local_index < len(group_info.nodes), (
