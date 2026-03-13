@@ -101,6 +101,7 @@ def _plan_node_ranges(group_info):
                         slice_info.width.pad_bottom,
                     )
                 )
+
             input_ranges_by_node[local_index] = {main_input_index: demanded_ranges}
             hw_pads_by_node[local_index] = hw_pads
         elif node.op in _IDENTITY_RANGE_OPS:
@@ -108,6 +109,7 @@ def _plan_node_ranges(group_info):
                 input_index: _clone_ranges(out_ranges)
                 for input_index in node_spec.input_sources
             }
+            hw_pads_by_node[local_index] = [None for _ in out_ranges]
         else:
             assert False, f"unsupported op {node.op} for tiled rewrite planning"
 

@@ -66,16 +66,12 @@ def _build_group(group_info):
 
             input_tensors_by_index[input_index] = source_tile
 
-        hw_pads = None
-        if node.op in {"Conv", "AveragePool"}:
-            hw_pads = range_plan.hw_pads_by_node[local_index][split_pos]
-
         output_tile, tiled_node = _build_tiled_node(
             node,
             split_id,
             input_tensors_by_index,
             range_plan.output_ranges_by_node[local_index][split_pos],
-            hw_pads,
+            range_plan.hw_pads_by_node[local_index][split_pos],
             name_scope,
         )
         tiles_by_local_index[local_index][split_pos] = output_tile
