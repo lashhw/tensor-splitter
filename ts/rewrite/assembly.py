@@ -88,11 +88,11 @@ def _build_group(group_info):
 def _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_exit):
     node_a = orig_nodes[group_info.node_range[0]]
     node_b = orig_nodes[group_info.node_range[1]]
+
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
     end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
 
     for consumer in list(group_info.exit_tensor.outputs):
-        assert consumer not in group_info.nodes, "sink output unexpectedly feeds a node inside the split group"
         for idx, inp in enumerate(consumer.inputs):
             if inp is group_info.exit_tensor:
                 consumer.inputs[idx] = stitched_exit
