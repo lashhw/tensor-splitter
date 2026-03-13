@@ -12,7 +12,6 @@ _RangePlan = namedtuple(
         "input_ranges_by_node",
         "hw_pads_by_node",
         "entry_ranges",
-        "sink_stitch_ranges",
     ],
 )
 
@@ -65,9 +64,9 @@ def _plan_node_ranges(group_info):
 
     height_ranges = _partition_ranges(group_info.exit_tensor.shape[2], split_count_h)
     width_ranges = _partition_ranges(group_info.exit_tensor.shape[3], split_count_w)
-    sink_stitch_ranges = [(h_range, w_range) for h_range in height_ranges for w_range in width_ranges]
-
-    output_ranges_by_node[-1] = _clone_ranges(sink_stitch_ranges)
+    output_ranges_by_node[-1] = [
+        (h_range, w_range) for h_range in height_ranges for w_range in width_ranges
+    ]
 
     for local_index in range(node_count - 1, -1, -1):
         node_spec = group_info.node_specs[local_index]
@@ -130,5 +129,4 @@ def _plan_node_ranges(group_info):
         input_ranges_by_node=input_ranges_by_node,
         hw_pads_by_node=hw_pads_by_node,
         entry_ranges=entry_ranges,
-        sink_stitch_ranges=sink_stitch_ranges,
     )

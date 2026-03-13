@@ -28,17 +28,6 @@ _GroupInfo = namedtuple(
 )
 
 
-def _ensure_toposorted(nodes):
-    index = {id(node): node_index for node_index, node in enumerate(nodes)}
-    for node_index, node in enumerate(nodes):
-        for tensor in node.inputs:
-            for producer in tensor.inputs:
-                producer_index = index.get(id(producer))
-                if producer_index is None:
-                    continue
-                assert producer_index < node_index, "graph nodes are not topologically sorted"
-
-
 def _ensure_supported_op(node):
     assert node.op in SUPPORTED_GROUP_OPS, f"unsupported op in split group: {node.op}"
     if node.op == "Concat":
@@ -171,8 +160,6 @@ def _collect_node_specs(group_nodes, graph_outputs):
 
 
 def _analyze_group(orig_nodes, group_cfg, graph_outputs):
-    _ensure_toposorted(orig_nodes)
-
     start, end = group_cfg.node_range
     assert 0 <= start <= end < len(orig_nodes), f"invalid node_range {group_cfg.node_range}"
 

@@ -1,4 +1,3 @@
-from .analysis import _ensure_toposorted
 from .lowering import _build_entry_tiles, _build_group_concat, _build_tile_crop, _build_tiled_node
 from .planning import _plan_node_ranges
 
@@ -31,9 +30,7 @@ def _build_group(group_info):
     for orig_index, split_id in group_info.execution_order:
         split_pos = split_pos_by_key[split_id]
         local_index = orig_index - group_start
-        assert 0 <= local_index < len(group_info.nodes), (
-            f"node index {orig_index} in execution_order is outside group range {group_info.node_range}"
-        )
+        assert 0 <= local_index < len(group_info.nodes)
 
         node_spec = group_info.node_specs[local_index]
         node = node_spec.node
@@ -76,20 +73,8 @@ def _build_group(group_info):
     for local_index, node_tiles in enumerate(tiles_by_local_index):
         assert all(tile is not None for tile in node_tiles)
 
-    # Crop sink tiles back to stitch ranges, then concatenate them into the exit tensor.
-    stitch_nodes = []
-    stitch_tiles = []
-    for split_pos, split_id in enumerate(range_plan.split_keys):
-        stitched_tile, prep_nodes = _crop_tile_if_needed(
-            tiles_by_local_index[-1][split_pos],
-            range_plan.output_ranges_by_node[-1][split_pos],
-            range_plan.sink_stitch_ranges[split_pos],
-            split_id,
-            f"{group_info.exit_tensor.name}_stitch",
-            name_scope,
-        )
-        stitch_nodes.extend(prep_nodes)
-        stitch_tiles.append(stitched_tile)
+    # Sink tiles already match the stitch layout; concatenate them into the exit tensor.
+    stitch_tiles = list(tiles_by_local_index[-1])
 
     stitched_exit, concat_nodes = _build_group_concat(
         stitch_tiles,
@@ -98,10 +83,8 @@ def _build_group(group_info):
         group_info.tile_count,
         name_scope,
     )
-    stitch_nodes.extend(concat_nodes)
 
-    ordered_nodes = entry_split_nodes + body_nodes + stitch_nodes
-    _ensure_toposorted(ordered_nodes)
+    ordered_nodes = entry_split_nodes + body_nodes + concat_nodes
     return ordered_nodes, stitched_exit
 
 

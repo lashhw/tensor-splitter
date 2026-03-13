@@ -5,9 +5,7 @@ _MAX_CONCAT_INPUTS = 10
 
 
 def _infer_spatial_axis(shape):
-    assert shape is not None and len(shape) >= 4, (
-        f"tensor shape must have rank >= 4 for spatial rewrite; got {shape}"
-    )
+    assert shape is not None and len(shape) >= 4
     return len(shape) - 2
 
 
@@ -224,4 +222,5 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
         output_dtype=output_tensor.dtype,
     )
     concat_nodes.extend(final_concat_nodes)
+
     return out, concat_nodes
