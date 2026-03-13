@@ -10,9 +10,6 @@ def _infer_spatial_axis(shape):
 
 
 def _emit_bounded_concat(inputs, axis, output_name, output_shape, node_name, output_dtype):
-    """Build a concat tree so each emitted Concat stays within the engine limit."""
-    assert inputs, "Concat requires at least one input"
-
     concat_nodes = []
     stage_inputs = list(inputs)
     stage_index = 0
