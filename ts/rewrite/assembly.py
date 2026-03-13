@@ -48,11 +48,7 @@ def _build_group(group_info):
                 source_tile = tiles_by_local_index[source.producer_local_index][split_pos]
                 produced_range = range_plan.output_ranges_by_node[source.producer_local_index][split_pos]
 
-            assert source_tile is not None, (
-                f"execution_order violates dependencies: node index {group_info.node_range[0] + local_index} "
-                f"split {split_id} uses an input before producer is built"
-            )
-
+            assert source_tile is not None
             if input_index in demanded_ranges:
                 source_tile, prep_nodes = _crop_tile_if_needed(
                     source_tile,
