@@ -5,16 +5,23 @@ from .planning import _plan_node_ranges
 def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, name_scope):
     if produced_range == required_range:
         return tile, []
-    cropped_tile, crop_node = _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope)
+    cropped_tile, crop_node = _build_tile_crop(
+        tile,
+        produced_range,
+        required_range,
+        split_id,
+        name_prefix,
+        name_scope
+    )
     return cropped_tile, [crop_node]
 
 
 def _build_group(group_info):
     range_plan = _plan_node_ranges(group_info)
     split_count = len(range_plan.split_keys)
-    split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
-    group_start, _ = group_info.node_range
-    name_scope = f"g{group_info.node_range[0]}_{group_info.node_range[1]}"
+
+    group_start, group_end = group_info.node_range
+    name_scope = f"g{group_start}_{group_end}"
 
     # Split the group input once, then reuse tiles throughout the rewrite.
     entry_tiles, entry_split_nodes = _build_entry_tiles(
@@ -22,6 +29,8 @@ def _build_group(group_info):
         range_plan.entry_ranges,
         name_scope,
     )
+
+    split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
 
     tiles_by_local_index = [[None for _ in range(split_count)] for _ in group_info.nodes]
     body_nodes = []
@@ -33,8 +42,8 @@ def _build_group(group_info):
         assert 0 <= local_index < len(group_info.nodes)
 
         node_spec = group_info.node_specs[local_index]
-        node = node_spec.node
         demanded_ranges = range_plan.input_ranges_by_node[local_index]
+
         input_tensors_by_index = {}
 
         for input_index, source in node_spec.input_sources.items():
@@ -52,15 +61,14 @@ def _build_group(group_info):
                     produced_range,
                     demanded_ranges[input_index][split_pos],
                     split_id,
-                    f"{node.name or node.op}_l{local_index}_in{input_index}",
+                    f"{node_spec.node.name}_l{local_index}_in{input_index}",
                     name_scope,
                 )
                 body_nodes.extend(prep_nodes)
-
             input_tensors_by_index[input_index] = source_tile
 
         output_tile, tiled_node = _build_tiled_node(
-            node,
+            node_spec.node,
             split_id,
             input_tensors_by_index,
             range_plan.output_ranges_by_node[local_index][split_pos],
