@@ -78,9 +78,7 @@ def _build_group(group_info):
         body_nodes.append(tiled_node)
 
     for local_index, node_tiles in enumerate(tiles_by_local_index):
-        assert all(tile is not None for tile in node_tiles), (
-            f"execution_order has missing rewritten nodes for node index {group_info.node_range[0] + local_index}"
-        )
+        assert all(tile is not None for tile in node_tiles)
 
     # Crop sink tiles back to stitch ranges, then concatenate them into the exit tensor.
     stitch_nodes = []

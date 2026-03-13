@@ -130,14 +130,7 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
     return out, node
 
 
-def _build_tiled_node(
-    node,
-    split_id,
-    input_tensors_by_index,
-    out_range,
-    hw_pads=None,
-    name_scope=None,
-):
+def _build_tiled_node(node, split_id, input_tensors_by_index, out_range, hw_pads, name_scope):
     node_base_name = node.name or (
         node.outputs[0].name if node.outputs and node.outputs[0].name else node.op
     )
@@ -194,7 +187,7 @@ def _build_tiled_node(
     return out, new_node
 
 
-def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope=None):
+def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope):
     split_count_h, split_count_w = tile_count
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
