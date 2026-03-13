@@ -73,11 +73,8 @@ def _build_group(group_info):
     for local_index, node_tiles in enumerate(tiles_by_local_index):
         assert all(tile is not None for tile in node_tiles)
 
-    # Sink tiles already match the stitch layout; concatenate them into the exit tensor.
-    stitch_tiles = list(tiles_by_local_index[-1])
-
     stitched_exit, concat_nodes = _build_group_concat(
-        stitch_tiles,
+        tiles_by_local_index[-1],
         group_info.exit_tensor,
         range_plan.split_keys,
         group_info.tile_count,
