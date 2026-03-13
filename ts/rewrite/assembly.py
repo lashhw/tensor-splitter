@@ -2,20 +2,6 @@ from .lowering import _build_entry_tiles, _build_group_concat, _build_tile_crop,
 from .planning import _plan_node_ranges
 
 
-def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, name_scope):
-    if produced_range == required_range:
-        return tile, []
-    cropped_tile, crop_node = _build_tile_crop(
-        tile,
-        produced_range,
-        required_range,
-        split_id,
-        name_prefix,
-        name_scope
-    )
-    return cropped_tile, [crop_node]
-
-
 def _build_group(group_info):
     range_plan = _plan_node_ranges(group_info)
     split_count = len(range_plan.split_keys)
@@ -53,18 +39,21 @@ def _build_group(group_info):
             else:
                 source_tile = tiles_by_local_index[source.producer_local_index][split_pos]
                 produced_range = range_plan.output_ranges_by_node[source.producer_local_index][split_pos]
-
             assert source_tile is not None
+
             if input_index in demanded_ranges:
-                source_tile, prep_nodes = _crop_tile_if_needed(
-                    source_tile,
-                    produced_range,
-                    demanded_ranges[input_index][split_pos],
-                    split_id,
-                    f"{node_spec.node.name}_l{local_index}_in{input_index}",
-                    name_scope,
-                )
-                body_nodes.extend(prep_nodes)
+                required_range = demanded_ranges[input_index][split_pos]
+                if produced_range != required_range:
+                    source_tile, crop_node = _build_tile_crop(
+                        source_tile,
+                        produced_range,
+                        required_range,
+                        split_id,
+                        f"{node_spec.node.name}_l{local_index}_in{input_index}",
+                        name_scope,
+                    )
+                    body_nodes.append(crop_node)
+
             input_tensors_by_index[input_index] = source_tile
 
         output_tile, tiled_node = _build_tiled_node(
