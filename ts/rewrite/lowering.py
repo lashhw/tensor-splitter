@@ -4,34 +4,6 @@ import onnx_graphsurgeon as gs
 _MAX_CONCAT_INPUTS = 10
 
 
-def _node_base_name(node):
-    if node.name:
-        return node.name
-    if node.outputs and node.outputs[0].name:
-        return node.outputs[0].name
-    return node.op
-
-
-def _make_constant(name, values):
-    return gs.Constant(name, values)
-
-
-def _shape_with_dim_size(shape, dim, size):
-    new_shape = list(shape)
-    new_shape[dim] = size
-    return new_shape
-
-
-def _scoped_name(name_scope, base_name):
-    return f"{name_scope}__{base_name}"
-
-
-def _resolve_constant_input_values(tensor):
-    if isinstance(tensor, gs.Constant):
-        return np.asarray(tensor.values, dtype=np.int64).reshape(-1)
-    return None
-
-
 def _infer_spatial_axis(shape):
     assert shape is not None and len(shape) >= 4, (
         f"tensor shape must have rank >= 4 for spatial rewrite; got {shape}"
@@ -39,25 +11,9 @@ def _infer_spatial_axis(shape):
     return len(shape) - 2
 
 
-def _shape_with_hw(shape, h_size, w_size):
-    axis = _infer_spatial_axis(shape)
-    out_shape = _shape_with_dim_size(shape, axis, h_size)
-    return _shape_with_dim_size(out_shape, axis + 1, w_size)
-
-
-def _concat_axis_size(inputs, axis):
-    axis_sizes = [tensor.shape[axis] for tensor in inputs]
-    if any(size is None for size in axis_sizes):
-        return None
-    return sum(axis_sizes)
-
-
 def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, output_dtype):
     """Build a concat tree so each emitted Concat stays within the engine limit."""
     assert inputs, "Concat requires at least one input"
-
-    def _make_output(name, shape):
-        return gs.Variable(name, dtype=output_dtype, shape=shape)
 
     concat_nodes = []
     stage_inputs = list(inputs)
@@ -67,13 +23,12 @@ def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, ou
         next_stage_inputs = []
         for group_index, start in enumerate(range(0, len(stage_inputs), _MAX_CONCAT_INPUTS)):
             group_inputs = stage_inputs[start : start + _MAX_CONCAT_INPUTS]
-            group_shape = _shape_with_dim_size(
-                output_shape,
-                axis,
-                _concat_axis_size(group_inputs, axis),
-            )
+            axis_sizes = [tensor.shape[axis] for tensor in group_inputs]
+            group_axis_size = None if any(size is None for size in axis_sizes) else sum(axis_sizes)
+            group_shape = list(output_shape)
+            group_shape[axis] = group_axis_size
             group_name = f"{node_name}_s{stage_index}_g{group_index}"
-            group_out = _make_output(f"{group_name}_out", group_shape)
+            group_out = gs.Variable(f"{group_name}_out", dtype=output_dtype, shape=group_shape)
             concat_nodes.append(
                 gs.Node(
                     name=group_name,
@@ -87,7 +42,7 @@ def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, ou
         stage_inputs = next_stage_inputs
         stage_index += 1
 
-    out = _make_output(output_name, output_shape)
+    out = gs.Variable(output_name, dtype=output_dtype, shape=output_shape)
     concat_nodes.append(
         gs.Node(
             name=node_name,
@@ -102,20 +57,16 @@ def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, ou
 
 def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
     axis = _infer_spatial_axis(entry_tensor.shape)
+    scope_prefix = f"{name_scope}__"
+
     tiles = []
     slice_nodes = []
     for tile_id, ((start_h, end_h), (start_w, end_w)) in enumerate(entry_ranges):
-        starts_arr = np.array([start_h, start_w], dtype=np.int64)
-        ends_arr = np.array([end_h, end_w], dtype=np.int64)
-        axes_arr = np.array([axis, axis + 1], dtype=np.int64)
-        steps_arr = np.array([1, 1], dtype=np.int64)
-        out_shape = _shape_with_hw(entry_tensor.shape, end_h - start_h, end_w - start_w)
+        out_shape = list(entry_tensor.shape)
+        out_shape[axis] = end_h - start_h
+        out_shape[axis + 1] = end_w - start_w
 
-        base_name = _scoped_name(name_scope, f"{entry_tensor.name}_split{tile_id}")
-        starts = _make_constant(f"{base_name}_starts", starts_arr)
-        ends = _make_constant(f"{base_name}_ends", ends_arr)
-        axes = _make_constant(f"{base_name}_axes", axes_arr)
-        steps = _make_constant(f"{base_name}_steps", steps_arr)
+        base_name = f"{scope_prefix}{entry_tensor.name}_split{tile_id}"
         out = gs.Variable(
             f"{base_name}_out",
             dtype=entry_tensor.dtype,
@@ -124,7 +75,13 @@ def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
         slice_node = gs.Node(
             name=base_name,
             op="Slice",
-            inputs=[entry_tensor, starts, ends, axes, steps],
+            inputs=[
+                entry_tensor,
+                gs.Constant(f"{base_name}_starts", np.array([start_h, start_w], dtype=np.int64)),
+                gs.Constant(f"{base_name}_ends", np.array([end_h, end_w], dtype=np.int64)),
+                gs.Constant(f"{base_name}_axes", np.array([axis, axis + 1], dtype=np.int64)),
+                gs.Constant(f"{base_name}_steps", np.array([1, 1], dtype=np.int64)),
+            ],
             outputs=[out],
         )
 
@@ -136,6 +93,7 @@ def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
 
 def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope=None):
     axis = _infer_spatial_axis(tile.shape)
+    scope_prefix = f"{name_scope}__"
 
     (prod_y0, _), (prod_x0, _) = produced_range
     (req_y0, req_y1), (req_x0, req_x1) = required_range
@@ -145,26 +103,27 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
     rel_start_w = req_x0 - prod_x0
     rel_end_w = req_x1 - prod_x0
 
-    starts_arr = np.array([rel_start_h, rel_start_w], dtype=np.int64)
-    ends_arr = np.array([rel_end_h, rel_end_w], dtype=np.int64)
-    axes_arr = np.array([axis, axis + 1], dtype=np.int64)
-    steps_arr = np.array([1, 1], dtype=np.int64)
-    base_name = _scoped_name(name_scope, f"{name_prefix}_crop_s{split_id[0]}_{split_id[1]}")
+    out_shape = list(tile.shape)
+    out_shape[axis] = req_y1 - req_y0
+    out_shape[axis + 1] = req_x1 - req_x0
 
-    starts = _make_constant(f"{base_name}_starts", starts_arr)
-    ends = _make_constant(f"{base_name}_ends", ends_arr)
-    axes = _make_constant(f"{base_name}_axes", axes_arr)
-    steps = _make_constant(f"{base_name}_steps", steps_arr)
+    base_name = f"{scope_prefix}{name_prefix}_crop_s{split_id[0]}_{split_id[1]}"
     out = gs.Variable(
         f"{base_name}_out",
         dtype=tile.dtype,
-        shape=_shape_with_hw(tile.shape, h_size=req_y1 - req_y0, w_size=req_x1 - req_x0),
+        shape=out_shape,
     )
 
     node = gs.Node(
         name=base_name,
         op="Slice",
-        inputs=[tile, starts, ends, axes, steps],
+        inputs=[
+            tile,
+            gs.Constant(f"{base_name}_starts", np.array([rel_start_h, rel_start_w], dtype=np.int64)),
+            gs.Constant(f"{base_name}_ends", np.array([rel_end_h, rel_end_w], dtype=np.int64)),
+            gs.Constant(f"{base_name}_axes", np.array([axis, axis + 1], dtype=np.int64)),
+            gs.Constant(f"{base_name}_steps", np.array([1, 1], dtype=np.int64)),
+        ],
         outputs=[out],
     )
 
@@ -179,7 +138,10 @@ def _build_tiled_node(
     hw_pads=None,
     name_scope=None,
 ):
-    node_base_name = _node_base_name(node)
+    node_base_name = node.name or (
+        node.outputs[0].name if node.outputs and node.outputs[0].name else node.op
+    )
+    scope_prefix = f"{name_scope}__"
 
     new_inputs = list(node.inputs)
     for input_index, tensor in input_tensors_by_index.items():
@@ -187,10 +149,16 @@ def _build_tiled_node(
 
     assert out_range is not None, f"out_range is required when lowering op {node.op}"
     (y0, y1), (x0, x1) = out_range
-    out_shape = _shape_with_hw(node.outputs[0].shape, y1 - y0, x1 - x0)
+    axis = _infer_spatial_axis(node.outputs[0].shape)
+    out_shape = list(node.outputs[0].shape)
+    out_shape[axis] = y1 - y0
+    out_shape[axis + 1] = x1 - x0
 
     if node.op == "Reshape" and len(new_inputs) >= 2:
-        shape_values = _resolve_constant_input_values(node.inputs[1])
+        shape_values = None
+        if isinstance(node.inputs[1], gs.Constant):
+            shape_values = np.asarray(node.inputs[1].values, dtype=np.int64).reshape(-1)
+
         if shape_values is not None and shape_values.size >= 2:
             target_h = out_shape[-2]
             target_w = out_shape[-1]
@@ -200,26 +168,24 @@ def _build_tiled_node(
                     reshaped[-2] = target_h
                 if reshaped[-1] > 0:
                     reshaped[-1] = target_w
-                new_inputs[1] = _make_constant(
-                    _scoped_name(name_scope, f"{node_base_name}_shape_s{split_id[0]}_{split_id[1]}"),
+                new_inputs[1] = gs.Constant(
+                    f"{scope_prefix}{node_base_name}_shape_s{split_id[0]}_{split_id[1]}",
                     reshaped.astype(np.int64),
                 )
 
     out = gs.Variable(
-        _scoped_name(name_scope, f"{node.outputs[0].name}_split_s{split_id[0]}_{split_id[1]}"),
+        f"{scope_prefix}{node.outputs[0].name}_split_s{split_id[0]}_{split_id[1]}",
         dtype=node.outputs[0].dtype,
         shape=out_shape,
     )
 
+    attrs = dict(node.attrs) if node.attrs else {}
     if node.op in {"Conv", "AveragePool"}:
         assert hw_pads is not None, f"hw pads are required when lowering {node.op} nodes"
-        attrs = dict(node.attrs)
         attrs["pads"] = hw_pads
-    else:
-        attrs = dict(node.attrs) if node.attrs else {}
 
     new_node = gs.Node(
-        name=_scoped_name(name_scope, f"{node_base_name}_split_s{split_id[0]}_{split_id[1]}"),
+        name=f"{scope_prefix}{node_base_name}_split_s{split_id[0]}_{split_id[1]}",
         op=node.op,
         inputs=new_inputs,
         outputs=[out],
@@ -233,6 +199,8 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
     tile_by_key = {key: tile for key, tile in zip(split_keys, tiles)}
+    axis = _infer_spatial_axis(output_tensor.shape)
+    scope_prefix = f"{name_scope}__"
     concat_nodes = []
 
     if split_count_w == 1:
@@ -241,13 +209,14 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
         final_concat_inputs = []
         for split_id_h in range(split_count_h):
             row_concat_inputs = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
-            row_out_shape = _shape_with_dim_size(output_tensor.shape, 2, row_concat_inputs[0].shape[2])
+            row_out_shape = list(output_tensor.shape)
+            row_out_shape[axis] = row_concat_inputs[0].shape[axis]
             row_out, row_concat_nodes = _build_bounded_concat(
                 inputs=row_concat_inputs,
-                axis=3,
-                output_name=_scoped_name(name_scope, f"{output_tensor.name}_row{split_id_h}"),
+                axis=axis + 1,
+                output_name=f"{scope_prefix}{output_tensor.name}_row{split_id_h}",
                 output_shape=row_out_shape,
-                node_name=_scoped_name(name_scope, f"{output_tensor.name}_concat_row{split_id_h}"),
+                node_name=f"{scope_prefix}{output_tensor.name}_concat_row{split_id_h}",
                 output_dtype=output_tensor.dtype,
             )
             concat_nodes.extend(row_concat_nodes)
@@ -255,10 +224,10 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
 
     out, final_concat_nodes = _build_bounded_concat(
         inputs=final_concat_inputs,
-        axis=2,
+        axis=axis,
         output_name=output_tensor.name,
         output_shape=output_tensor.shape,
-        node_name=_scoped_name(name_scope, f"{output_tensor.name}_concat"),
+        node_name=f"{scope_prefix}{output_tensor.name}_concat",
         output_dtype=output_tensor.dtype,
     )
     concat_nodes.extend(final_concat_nodes)
