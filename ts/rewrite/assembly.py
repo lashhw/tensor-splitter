@@ -6,15 +6,7 @@ from .planning import _plan_node_ranges
 def _crop_tile_if_needed(tile, produced_range, required_range, split_id, name_prefix, name_scope):
     if produced_range == required_range:
         return tile, []
-
-    cropped_tile, crop_node = _build_tile_crop(
-        tile=tile,
-        produced_range=produced_range,
-        required_range=required_range,
-        split_id=split_id,
-        name_prefix=name_prefix,
-        name_scope=name_scope,
-    )
+    cropped_tile, crop_node = _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope)
     return cropped_tile, [crop_node]
 
 
@@ -63,12 +55,12 @@ def _build_group(group_info):
 
             if input_index in demanded_ranges:
                 source_tile, prep_nodes = _crop_tile_if_needed(
-                    tile=source_tile,
-                    produced_range=produced_range,
-                    required_range=demanded_ranges[input_index][split_pos],
-                    split_id=split_id,
-                    name_prefix=f"{node.name or node.op}_l{local_index}_in{input_index}",
-                    name_scope=name_scope,
+                    source_tile,
+                    produced_range,
+                    demanded_ranges[input_index][split_pos],
+                    split_id,
+                    f"{node.name or node.op}_l{local_index}_in{input_index}",
+                    name_scope,
                 )
                 body_nodes.extend(prep_nodes)
 
@@ -79,12 +71,12 @@ def _build_group(group_info):
             hw_pads = range_plan.hw_pads_by_node[local_index][split_pos]
 
         output_tile, tiled_node = _build_tiled_node(
-            node=node,
-            split_id=split_id,
-            input_tensors_by_index=input_tensors_by_index,
-            out_range=range_plan.output_ranges_by_node[local_index][split_pos],
-            hw_pads=hw_pads,
-            name_scope=name_scope,
+            node,
+            split_id,
+            input_tensors_by_index,
+            range_plan.output_ranges_by_node[local_index][split_pos],
+            hw_pads,
+            name_scope,
         )
         tiles_by_local_index[local_index][split_pos] = output_tile
         body_nodes.append(tiled_node)
@@ -99,22 +91,22 @@ def _build_group(group_info):
     stitch_tiles = []
     for split_pos, split_id in enumerate(range_plan.split_keys):
         stitched_tile, prep_nodes = _crop_tile_if_needed(
-            tile=tiles_by_local_index[-1][split_pos],
-            produced_range=range_plan.output_ranges_by_node[-1][split_pos],
-            required_range=range_plan.sink_stitch_ranges[split_pos],
-            split_id=split_id,
-            name_prefix=f"{group_info.exit_tensor.name}_stitch",
-            name_scope=name_scope,
+            tiles_by_local_index[-1][split_pos],
+            range_plan.output_ranges_by_node[-1][split_pos],
+            range_plan.sink_stitch_ranges[split_pos],
+            split_id,
+            f"{group_info.exit_tensor.name}_stitch",
+            name_scope,
         )
         stitch_nodes.extend(prep_nodes)
         stitch_tiles.append(stitched_tile)
 
     stitched_exit, concat_nodes = _build_group_concat(
-        tiles=stitch_tiles,
-        output_tensor=group_info.exit_tensor,
-        split_keys=range_plan.split_keys,
-        tile_count=group_info.tile_count,
-        name_scope=name_scope,
+        stitch_tiles,
+        group_info.exit_tensor,
+        range_plan.split_keys,
+        group_info.tile_count,
+        name_scope,
     )
     stitch_nodes.extend(concat_nodes)
 

@@ -91,7 +91,7 @@ def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
     return tiles, slice_nodes
 
 
-def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope=None):
+def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope):
     axis = _infer_spatial_axis(tile.shape)
     scope_prefix = f"{name_scope}__"
 
