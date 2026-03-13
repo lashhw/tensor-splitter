@@ -1,4 +1,4 @@
-from .lowering import _build_entry_tiles, _build_group_concat, _build_tile_crop, _build_tiled_node
+from .lowering import _emit_entry_tiles, _emit_group_concat, _emit_tile_crop, _emit_tiled_node
 from .planning import _plan_node_ranges
 
 
@@ -10,7 +10,7 @@ def _build_group(group_info):
     name_scope = f"g{group_start}_{group_end}"
 
     # Split the group input once, then reuse tiles throughout the rewrite.
-    entry_tiles, entry_split_nodes = _build_entry_tiles(
+    entry_tiles, entry_slice_nodes = _emit_entry_tiles(
         group_info.entry_tensor,
         range_plan.entry_ranges,
         name_scope,
@@ -44,7 +44,7 @@ def _build_group(group_info):
             if input_index in demanded_ranges:
                 required_range = demanded_ranges[input_index][split_pos]
                 if produced_range != required_range:
-                    source_tile, crop_node = _build_tile_crop(
+                    source_tile, crop_node = _emit_tile_crop(
                         source_tile,
                         produced_range,
                         required_range,
@@ -56,7 +56,7 @@ def _build_group(group_info):
 
             input_tensors_by_index[input_index] = source_tile
 
-        output_tile, tiled_node = _build_tiled_node(
+        output_tile, lowered_node = _emit_tiled_node(
             node_spec.node,
             split_id,
             input_tensors_by_index,
@@ -65,12 +65,12 @@ def _build_group(group_info):
             name_scope,
         )
         tiles_by_local_index[local_index][split_pos] = output_tile
-        body_nodes.append(tiled_node)
+        body_nodes.append(lowered_node)
 
     for local_index, node_tiles in enumerate(tiles_by_local_index):
         assert all(tile is not None for tile in node_tiles)
 
-    stitched_exit, concat_nodes = _build_group_concat(
+    stitched_exit, concat_nodes = _emit_group_concat(
         tiles_by_local_index[-1],
         group_info.exit_tensor,
         range_plan.split_keys,
@@ -78,7 +78,7 @@ def _build_group(group_info):
         name_scope,
     )
 
-    ordered_nodes = entry_split_nodes + body_nodes + concat_nodes
+    ordered_nodes = entry_slice_nodes + body_nodes + concat_nodes
     return ordered_nodes, stitched_exit
 
 

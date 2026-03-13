@@ -9,7 +9,7 @@ def _infer_spatial_axis(shape):
     return len(shape) - 2
 
 
-def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, output_dtype):
+def _emit_bounded_concat(inputs, axis, output_name, output_shape, node_name, output_dtype):
     """Build a concat tree so each emitted Concat stays within the engine limit."""
     assert inputs, "Concat requires at least one input"
 
@@ -53,7 +53,7 @@ def _build_bounded_concat(inputs, axis, output_name, output_shape, node_name, ou
     return out, concat_nodes
 
 
-def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
+def _emit_entry_tiles(entry_tensor, entry_ranges, name_scope):
     axis = _infer_spatial_axis(entry_tensor.shape)
     scope_prefix = f"{name_scope}__"
 
@@ -89,7 +89,7 @@ def _build_entry_tiles(entry_tensor, entry_ranges, name_scope):
     return tiles, slice_nodes
 
 
-def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope):
+def _emit_tile_crop(tile, produced_range, required_range, split_id, name_prefix, name_scope):
     axis = _infer_spatial_axis(tile.shape)
     scope_prefix = f"{name_scope}__"
 
@@ -128,7 +128,7 @@ def _build_tile_crop(tile, produced_range, required_range, split_id, name_prefix
     return out, node
 
 
-def _build_tiled_node(node, split_id, input_tensors_by_index, out_range, hw_pads, name_scope):
+def _emit_tiled_node(node, split_id, input_tensors_by_index, out_range, hw_pads, name_scope):
     node_base_name = node.name or (
         node.outputs[0].name if node.outputs and node.outputs[0].name else node.op
     )
@@ -185,7 +185,7 @@ def _build_tiled_node(node, split_id, input_tensors_by_index, out_range, hw_pads
     return out, new_node
 
 
-def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope):
+def _emit_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope):
     split_count_h, split_count_w = tile_count
     assert len(split_keys) == len(tiles), "split_keys and tiles must have the same length"
 
@@ -202,7 +202,7 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
             row_concat_inputs = [tile_by_key[(split_id_h, split_id_w)] for split_id_w in range(split_count_w)]
             row_out_shape = list(output_tensor.shape)
             row_out_shape[axis] = row_concat_inputs[0].shape[axis]
-            row_out, row_concat_nodes = _build_bounded_concat(
+            row_out, row_concat_nodes = _emit_bounded_concat(
                 inputs=row_concat_inputs,
                 axis=axis + 1,
                 output_name=f"{scope_prefix}{output_tensor.name}_row{split_id_h}",
@@ -213,7 +213,7 @@ def _build_group_concat(tiles, output_tensor, split_keys, tile_count, name_scope
             concat_nodes.extend(row_concat_nodes)
             final_concat_inputs.append(row_out)
 
-    out, final_concat_nodes = _build_bounded_concat(
+    out, final_concat_nodes = _emit_bounded_concat(
         inputs=final_concat_inputs,
         axis=axis,
         output_name=output_tensor.name,
