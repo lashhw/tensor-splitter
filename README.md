@@ -13,7 +13,7 @@ For each configured node range, it:
 3. Rewrites operators in that range to consume and produce per-tile tensors.
 4. Stitches tile outputs back into the original tensor layout.
 
-After rewriting, the CLI verifies numerical equivalence with ONNX Runtime by default.
+After rewriting, the CLI verifies numerical equivalence with ONNX Runtime.
 
 ## Quick start
 
@@ -43,7 +43,7 @@ After rewriting, the CLI verifies numerical equivalence with ONNX Runtime by def
 ### Usage
 
 ```bash
-python -m ts.cli INPUT CONFIG OUTPUT [--no-verify]
+python -m ts.cli INPUT CONFIG OUTPUT
 ```
 
 ### Arguments
@@ -53,7 +53,6 @@ python -m ts.cli INPUT CONFIG OUTPUT [--no-verify]
 | `INPUT` | Path to input ONNX model. |
 | `CONFIG` | Path to split configuration JSON. |
 | `OUTPUT` | Path to output ONNX model. |
-| `--no-verify` | Disable ONNX Runtime numerical verification. |
 
 ## Configuration format
 

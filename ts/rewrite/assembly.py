@@ -1,58 +1,102 @@
-from .analysis import _ensure_supported_op, _ensure_toposorted
-from .lowering import _build_entry_tiles, _build_group_concat, _build_stage_tiles
-from .planning import _build_ordered_node_writer, _plan_stage_ranges
+from .lowering import _emit_entry_tiles, _emit_group_concat, _emit_tile_crop, _emit_tiled_node
+from .planning import _plan_node_ranges
 
 
-def _build_group(group_info, group_cfg, node_index_map):
-    for node in group_info.nodes:
-        _ensure_supported_op(node)
+def _build_group(group_info):
+    range_plan = _plan_node_ranges(group_info)
+    split_count = len(range_plan.split_keys)
 
-    stage_plan = _plan_stage_ranges(group_info, group_cfg.tile_count)
-    first_orig_index = node_index_map[id(group_info.nodes[0])]
-    place_node, finalize_nodes = _build_ordered_node_writer(group_cfg.execution_order, first_orig_index)
+    group_start, group_end = group_info.node_range
+    name_scope = f"g{group_start}_{group_end}"
 
-    tiles, entry_nodes = _build_entry_tiles(group_info.entry_tensor, stage_plan.stage_ranges[0], axis=2)
-    assert len(entry_nodes) == len(stage_plan.split_keys), "internal error: split key and entry node count mismatch"
-    for split_id, entry_node in zip(stage_plan.split_keys, entry_nodes):
-        place_node(first_orig_index, split_id, entry_node)
-
-    for stage_idx, node in enumerate(group_info.nodes):
-        orig_index = node_index_map[id(node)]
-        main_input_idx = group_info.main_input_indices[stage_idx]
-        out_ranges = stage_plan.stage_ranges[stage_idx + 1]
-        conv_slices = stage_plan.conv_slices_by_stage[stage_idx]
-        tiles, op_nodes = _build_stage_tiles(node, tiles, out_ranges, main_input_idx, conv_slices)
-        assert len(op_nodes) == len(stage_plan.split_keys), "internal error: split key and op node count mismatch"
-        for split_id, op_node in zip(stage_plan.split_keys, op_nodes):
-            place_node(orig_index, split_id, op_node)
-
-    concat_out, concat_nodes = _build_group_concat(
-        tiles,
-        axis=2,
-        output_tensor=group_info.exit_tensor,
-        split_keys=stage_plan.split_keys,
-        tile_count=group_cfg.tile_count,
+    # Split the group input once, then reuse tiles throughout the rewrite.
+    entry_tiles, entry_slice_nodes = _emit_entry_tiles(
+        group_info.entry_tensor,
+        range_plan.entry_ranges,
+        name_scope,
     )
-    ordered_nodes = finalize_nodes(concat_nodes)
-    _ensure_toposorted(ordered_nodes)
 
-    return ordered_nodes, concat_out
+    split_pos_by_key = {split_key: split_pos for split_pos, split_key in enumerate(range_plan.split_keys)}
+
+    tiles_by_local_index = [[None for _ in range(split_count)] for _ in group_info.nodes]
+    body_nodes = []
+
+    # Lower each requested (node, tile) step in execution order.
+    for orig_index, split_id in group_info.execution_order:
+        split_pos = split_pos_by_key[split_id]
+        local_index = orig_index - group_start
+        assert 0 <= local_index < len(group_info.nodes)
+
+        node_spec = group_info.node_specs[local_index]
+        demanded_ranges = range_plan.input_ranges_by_node[local_index]
+
+        input_tensors_by_index = {}
+
+        for input_index, source in node_spec.input_sources.items():
+            if source.kind == "entry":
+                source_tile = entry_tiles[split_pos]
+                produced_range = range_plan.entry_ranges[split_pos]
+            else:
+                source_tile = tiles_by_local_index[source.producer_local_index][split_pos]
+                produced_range = range_plan.output_ranges_by_node[source.producer_local_index][split_pos]
+            assert source_tile is not None
+
+            if input_index in demanded_ranges:
+                required_range = demanded_ranges[input_index][split_pos]
+                if produced_range != required_range:
+                    source_tile, crop_node = _emit_tile_crop(
+                        source_tile,
+                        produced_range,
+                        required_range,
+                        split_id,
+                        f"{node_spec.node.name}_l{local_index}_in{input_index}",
+                        name_scope,
+                    )
+                    body_nodes.append(crop_node)
+
+            input_tensors_by_index[input_index] = source_tile
+
+        output_tile, lowered_node = _emit_tiled_node(
+            node_spec.node,
+            split_id,
+            input_tensors_by_index,
+            range_plan.output_ranges_by_node[local_index][split_pos],
+            range_plan.hw_pads_by_node[local_index][split_pos],
+            name_scope,
+        )
+        tiles_by_local_index[local_index][split_pos] = output_tile
+        body_nodes.append(lowered_node)
+
+    for local_index, node_tiles in enumerate(tiles_by_local_index):
+        assert all(tile is not None for tile in node_tiles)
+
+    stitched_exit, concat_nodes = _emit_group_concat(
+        tiles_by_local_index[-1],
+        group_info.exit_tensor,
+        range_plan.split_keys,
+        group_info.tile_count,
+        name_scope,
+    )
+
+    ordered_nodes = entry_slice_nodes + body_nodes + concat_nodes
+    return ordered_nodes, stitched_exit
 
 
-def _apply_group(graph, orig_nodes, group_info, group_cfg, new_nodes, concat_out):
-    node_a = orig_nodes[group_cfg.node_range[0]]
-    node_b = orig_nodes[group_cfg.node_range[1]]
+def _apply_group(graph, orig_nodes, group_info, new_nodes, stitched_exit):
+    node_a = orig_nodes[group_info.node_range[0]]
+    node_b = orig_nodes[group_info.node_range[1]]
+
     start_pos = next(i for i, node in enumerate(graph.nodes) if node is node_a)
     end_pos = next(i for i, node in enumerate(graph.nodes) if node is node_b)
 
     for consumer in list(group_info.exit_tensor.outputs):
         for idx, inp in enumerate(consumer.inputs):
             if inp is group_info.exit_tensor:
-                consumer.inputs[idx] = concat_out
+                consumer.inputs[idx] = stitched_exit
 
     for idx, out in enumerate(graph.outputs):
         if out is group_info.exit_tensor:
-            graph.outputs[idx] = concat_out
+            graph.outputs[idx] = stitched_exit
 
     for node in group_info.nodes:
         node.inputs = []
